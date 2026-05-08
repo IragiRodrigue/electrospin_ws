@@ -1,0 +1,12 @@
+human_tracking:
+  ros__parameters:
+    simulation_mode: true
+    camera_index: 0
+    tracking_fps: 30
+    model_complexity: 1
+    min_detection_confidence: 0.5
+    min_tracking_confidence: 0.5
+    enable_hands: true
+    enable_pose: true
+    debug_visualization: true
+    gesture_debounce_s: 0.5

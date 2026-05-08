@@ -1,0 +1,11 @@
+motion_mapping:
+  ros__parameters:
+    simulation_mode: true
+    teleoperation_arm: "right"
+    scale_factor: 0.5
+    smoothing_alpha: 0.3
+    max_joint_velocity: 2.0
+    prediction_steps: 1
+    enable_safety: true
+    workspace_radius: 0.35
+    mapping_mode: "angle"
