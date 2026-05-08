@@ -5,16 +5,16 @@ ElectroSpin Industrial Dashboard UI
 Professional PyQt5-based industrial control interface for the
 autonomous nanofiber fabrication platform.
 
-Features:
-  - Live camera feed with quality overlay
-  - Real-time collector RPM gauge
-  - Robot joint state monitor
-  - AI decision visualization
-  - System health dashboard
-  - Emergency stop button
-  - Manual/Autonomous mode switch
-  - Parameter adjustment panels
-  - Quality trend graphs
+Real-time displays:
+  - 6-DOF robot arm joint visualization
+  - Teleoperation skeleton overlay
+  - Collector RPM gauge + vibration
+  - Syringe pump flow + pressure
+  - AI decision parameters
+  - Motion command tracking
+  - Live trend graphs for all metrics
+  - Camera feed with quality overlay
+  - Emergency stop + mode switch
 
 Author: ElectroSpin Platform
 """
@@ -36,7 +36,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QSize
 from PyQt5.QtGui import (
     QFont, QColor, QPalette, QPainter, QPen, QBrush,
-    QLinearGradient, QRadialGradient, QConicalGradient
+    QLinearGradient, QRadialGradient, QConicalGradient, QImage, QPixmap
 )
 
 import rclpy
@@ -44,9 +44,10 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
 from std_msgs.msg import String, Float32, Bool
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import Image, JointState
 from electrospin_interfaces.msg import (
-    FiberQuality, CollectorStatus, ElectrospinCommand, SystemStatus
+    FiberQuality, CollectorStatus, ElectrospinCommand,
+    SystemStatus, HumanPose, HandGesture, MotionCommand
 )
 
 try:
@@ -77,12 +78,14 @@ class Colors:
     ACCENT_YELLOW = "#d29922"
     ACCENT_RED    = "#f85149"
     ACCENT_CYAN   = "#39d2c0"
+    ACCENT_ORANGE = "#d18616"
     GAUGE_BG      = "#21262d"
-    GAUGE_FILL    = "#58a6ff"
     SUCCESS       = "#3fb950"
     WARNING       = "#d29922"
     ERROR         = "#f85149"
     ESTOP_RED     = "#da3633"
+    SKELETON_CLR  = "#58a6ff"
+    JOINT_CLR     = "#3fb950"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -90,7 +93,7 @@ class Colors:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class CircularGauge(QWidget):
-    """Industrial circular gauge widget for RPM, quality, etc."""
+    """Industrial circular gauge widget."""
 
     def __init__(self, title: str, unit: str = "", min_val: float = 0,
                  max_val: float = 100, parent=None):
@@ -139,6 +142,17 @@ class CircularGauge(QWidget):
         span = int(frac * 300 * 16)
         painter.drawArc(*rect, 30 * 16, span)
 
+        # Target tick
+        if self.target > 0:
+            tfrac = (self.target - self.min_val) / (self.max_val - self.min_val + 1e-6)
+            tfrac = max(0.0, min(1.0, tfrac))
+            angle_deg = 30 + tfrac * 300
+            angle_rad = math.radians(angle_deg)
+            tx = cx + int((radius + 2) * math.cos(angle_rad))
+            ty = cy - int((radius + 2) * math.sin(angle_rad))
+            painter.setPen(QPen(QColor(Colors.ACCENT_ORANGE), 3))
+            painter.drawPoint(tx, ty)
+
         # Value text
         painter.setPen(QColor(Colors.TEXT_PRIMARY))
         font = QFont("JetBrains Mono", 14, QFont.Bold)
@@ -185,17 +199,14 @@ class QualityBar(QWidget):
         bar_h = 8
         y = (h - bar_h) // 2
 
-        # Label
         painter.setPen(QColor(Colors.TEXT_SECONDARY))
         painter.setFont(QFont("JetBrains Mono", 8))
         painter.drawText(0, 0, 80, h, Qt.AlignVCenter | Qt.AlignLeft, self.label)
 
-        # Background
         painter.setBrush(QColor(Colors.GAUGE_BG))
         painter.setPen(Qt.NoPen)
         painter.drawRoundedRect(85, y, w - 140, bar_h, 4, 4)
 
-        # Fill
         fill_w = int((w - 140) * self.value)
         if self.value > 0.7:
             color = QColor(Colors.SUCCESS)
@@ -206,31 +217,32 @@ class QualityBar(QWidget):
         painter.setBrush(color)
         painter.drawRoundedRect(85, y, fill_w, bar_h, 4, 4)
 
-        # Value text
         painter.setPen(QColor(Colors.TEXT_PRIMARY))
         painter.setFont(QFont("JetBrains Mono", 8))
         painter.drawText(w - 50, 0, 50, h, Qt.AlignVCenter | Qt.AlignRight,
                          f"{self.value:.2f}")
-
         painter.end()
 
 
 class TrendGraph(QWidget):
-    """Simple real-time trend line graph."""
+    """Real-time trend line graph with multiple series."""
 
     def __init__(self, title: str, max_points: int = 200, parent=None):
         super().__init__(parent)
         self.title = title
-        self.data = deque(maxlen=max_points)
+        self.series: Dict[str, deque] = {}
+        self.colors: Dict[str, str] = {}
+        self.max_points = max_points
         self.setMinimumSize(300, 100)
-        self.color = QColor(Colors.ACCENT_CYAN)
 
-    def add_point(self, val: float):
-        self.data.append(val)
+    def add_series(self, name: str, color: str):
+        self.series[name] = deque(maxlen=self.max_points)
+        self.colors[name] = color
+
+    def add_point(self, series_name: str, val: float):
+        if series_name in self.series:
+            self.series[series_name].append(val)
         self.update()
-
-    def set_color(self, color: str):
-        self.color = QColor(color)
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -241,42 +253,240 @@ class TrendGraph(QWidget):
         plot_w = w - margin * 2
         plot_h = h - margin * 2
 
-        # Background
         painter.setBrush(QColor(Colors.BG_CARD))
         painter.setPen(Qt.NoPen)
         painter.drawRoundedRect(0, 0, w, h, 6, 6)
 
-        # Grid lines
         pen = QPen(QColor(Colors.BORDER), 1, Qt.DotLine)
         painter.setPen(pen)
         for i in range(5):
             y = margin + int(plot_h * i / 4)
             painter.drawLine(margin, y, margin + plot_w, y)
 
-        # Title
         painter.setPen(QColor(Colors.TEXT_SECONDARY))
         painter.setFont(QFont("JetBrains Mono", 8))
         painter.drawText(margin, 15, self.title)
 
-        # Data line
-        if len(self.data) > 1:
-            pen = QPen(self.color, 2, Qt.SolidLine)
+        for name, data in self.series.items():
+            if len(data) < 2:
+                continue
+            color = self.colors.get(name, Colors.ACCENT_CYAN)
+            pen = QPen(QColor(color), 2, Qt.SolidLine)
             painter.setPen(pen)
             points = []
-            for i, val in enumerate(self.data):
-                x = margin + int(plot_w * i / (len(self.data) - 1))
-                y = margin + int(plot_h * (1.0 - val))
+            for i, val in enumerate(data):
+                x = margin + int(plot_w * i / (len(data) - 1))
+                y = margin + int(plot_h * (1.0 - max(0.0, min(1.0, val))))
                 points.append((x, y))
             for i in range(len(points) - 1):
                 painter.drawLine(points[i][0], points[i][1],
                                  points[i+1][0], points[i+1][1])
 
-        # Y-axis labels
         painter.setPen(QColor(Colors.TEXT_MUTED))
         painter.setFont(QFont("JetBrains Mono", 7))
         for i, val in enumerate([1.0, 0.75, 0.5, 0.25, 0.0]):
             y = margin + int(plot_h * i / 4)
             painter.drawText(2, y + 4, f"{val:.1f}")
+
+        # Legend
+        lx = margin + 5
+        ly = h - 14
+        painter.setFont(QFont("JetBrains Mono", 7))
+        for name in self.series:
+            color = self.colors.get(name, Colors.ACCENT_CYAN)
+            painter.setPen(QColor(color))
+            painter.drawText(lx, ly, name)
+            lx += len(name) * 7 + 12
+
+        painter.end()
+
+
+class RobotArmWidget(QWidget):
+    """2D side-view visualization of the MyCobot 6-DOF arm."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.joint_angles = [0.0] * 6  # radians
+        self.target_angles = [0.0] * 6
+        self.setMinimumSize(280, 260)
+
+    def set_angles(self, angles_rad):
+        self.joint_angles = list(angles_rad)
+        self.update()
+
+    def set_targets(self, angles_rad):
+        self.target_angles = list(angles_rad)
+        self.update()
+
+    def _fk_2d(self, angles):
+        """Simplified 2D forward kinematics for visualization."""
+        j1, j2, j3, j4, j5, j6 = angles
+        # Link lengths (pixels, scaled)
+        L = [0, 50, 70, 70, 45, 35, 25]
+        # Base at bottom center
+        bx, by = 140, 230
+        # Joint 1 = base rotation (shown as horizontal offset)
+        x_off = math.sin(j1) * 20
+        # Build chain upward
+        pts = [(bx + x_off, by)]
+        cum_angle = 0.0
+        for i in range(1, 7):
+            if i == 1:
+                cum_angle = j2
+            elif i == 2:
+                cum_angle = j2 + j3
+            elif i == 3:
+                cum_angle = j2 + j3 + j4
+            elif i == 4:
+                cum_angle = j2 + j3 + j4 + j5
+            elif i == 5:
+                cum_angle = j2 + j3 + j4 + j5 + j6
+            else:
+                cum_angle = j2 + j3 + j4 + j5 + j6
+            dx = L[i] * math.sin(cum_angle)
+            dy = -L[i] * math.cos(cum_angle)
+            prev = pts[-1]
+            pts.append((prev[0] + dx, prev[1] + dy))
+        return pts
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        w, h = self.width(), self.height()
+        painter.setBrush(QColor(Colors.BG_CARD))
+        painter.setPen(Qt.NoPen)
+        painter.drawRoundedRect(0, 0, w, h, 6, 6)
+
+        # Draw target arm (ghost)
+        target_pts = self._fk_2d(self.target_angles)
+        pen = QPen(QColor(Colors.ACCENT_ORANGE), 2, Qt.DashLine)
+        painter.setPen(pen)
+        for i in range(len(target_pts) - 1):
+            painter.drawLine(int(target_pts[i][0]), int(target_pts[i][1]),
+                              int(target_pts[i+1][0]), int(target_pts[i+1][1]))
+
+        # Draw current arm
+        pts = self._fk_2d(self.joint_angles)
+        pen = QPen(QColor(Colors.ACCENT_BLUE), 3, Qt.SolidLine, Qt.RoundCap)
+        painter.setPen(pen)
+        for i in range(len(pts) - 1):
+            painter.drawLine(int(pts[i][0]), int(pts[i][1]),
+                              int(pts[i+1][0]), int(pts[i+1][1]))
+
+        # Draw joints
+        for i, (x, y) in enumerate(pts):
+            r = 6 if i > 0 else 8
+            color = QColor(Colors.JOINT_CLR) if i > 0 else QColor(Colors.TEXT_MUTED)
+            painter.setBrush(color)
+            painter.setPen(QPen(QColor(Colors.BG_DARK), 1))
+            painter.drawEllipse(int(x) - r, int(y) - r, r * 2, r * 2)
+
+        # End-effector label
+        if pts:
+            ex, ey = pts[-1]
+            painter.setPen(QColor(Colors.ACCENT_CYAN))
+            painter.setFont(QFont("JetBrains Mono", 7))
+            painter.drawText(int(ex) + 8, int(ey) - 4, "EE")
+
+        # Joint angle readouts
+        painter.setPen(QColor(Colors.TEXT_SECONDARY))
+        painter.setFont(QFont("JetBrains Mono", 7))
+        for i, angle in enumerate(self.joint_angles):
+            deg = math.degrees(angle)
+            painter.drawText(5, 15 + i * 13, f"J{i+1}: {deg:+6.1f} deg")
+
+        painter.end()
+
+
+class SkeletonWidget(QWidget):
+    """2D visualization of tracked human skeleton for teleoperation."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.pose_data: Optional[Dict] = None
+        self.gesture_name = "none"
+        self.tracking = False
+        self.setMinimumSize(280, 220)
+
+    def set_pose(self, data: dict):
+        self.pose_data = data
+        self.tracking = data.get("person_detected", False)
+        self.update()
+
+    def set_gesture(self, name: str):
+        self.gesture_name = name
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        w, h = self.width(), self.height()
+        painter.setBrush(QColor(Colors.BG_CARD))
+        painter.setPen(Qt.NoPen)
+        painter.drawRoundedRect(0, 0, w, h, 6, 6)
+
+        if self.pose_data is None or not self.tracking:
+            painter.setPen(QColor(Colors.TEXT_MUTED))
+            painter.setFont(QFont("JetBrains Mono", 10))
+            painter.drawText(self.rect(), Qt.AlignCenter, "No person detected")
+            painter.end()
+            return
+
+        # Map normalized coords to widget
+        def to_px(norm_val, axis):
+            if axis == "x":
+                return int(norm_val * w)
+            return int(norm_val * h)
+
+        pd = self.pose_data
+
+        # Draw skeleton connections
+        connections = [
+            ("left_shoulder", "right_shoulder"),
+            ("left_shoulder", "left_elbow"),
+            ("right_shoulder", "right_elbow"),
+            ("left_elbow", "left_wrist"),
+            ("right_elbow", "right_wrist"),
+        ]
+
+        pen = QPen(QColor(Colors.SKELETON_CLR), 3, Qt.SolidLine, Qt.RoundCap)
+        painter.setPen(pen)
+
+        for start_key, end_key in connections:
+            s = pd.get(start_key)
+            e = pd.get(end_key)
+            if s and e and s.get("vis", 0) > 0.3 and e.get("vis", 0) > 0.3:
+                painter.drawLine(
+                    to_px(s["x"], "x"), to_px(s["y"], "y"),
+                    to_px(e["x"], "x"), to_px(e["y"], "y")
+                )
+
+        # Draw joints
+        joint_keys = [
+            "left_shoulder", "right_shoulder",
+            "left_elbow", "right_elbow",
+            "left_wrist", "right_wrist",
+        ]
+        for key in joint_keys:
+            j = pd.get(key)
+            if j and j.get("vis", 0) > 0.3:
+                painter.setBrush(QColor(Colors.JOINT_CLR))
+                painter.setPen(QPen(QColor(Colors.BG_DARK), 1))
+                px, py = to_px(j["x"], "x"), to_px(j["y"], "y")
+                painter.drawEllipse(px - 5, py - 5, 10, 10)
+
+        # Gesture label
+        painter.setPen(QColor(Colors.ACCENT_CYAN))
+        painter.setFont(QFont("JetBrains Mono", 9, QFont.Bold))
+        painter.drawText(5, 18, f"Gesture: {self.gesture_name}")
+
+        # Confidence
+        conf = pd.get("overall_confidence", 0)
+        painter.setPen(QColor(Colors.TEXT_SECONDARY))
+        painter.setFont(QFont("JetBrains Mono", 8))
+        painter.drawText(5, h - 8, f"Confidence: {conf:.2f}")
 
         painter.end()
 
@@ -332,13 +542,17 @@ class EStopButton(QPushButton):
 class DashboardNode(Node):
     """ROS2 node that bridges the Qt UI with ROS2 topics."""
 
-    # Signals for thread-safe UI updates
     quality_updated = pyqtSignal(dict)
     collector_updated = pyqtSignal(dict)
     robot_updated = pyqtSignal(dict)
     ai_updated = pyqtSignal(dict)
     system_updated = pyqtSignal(dict)
+    pump_updated = pyqtSignal(dict)
+    motion_updated = pyqtSignal(dict)
+    pose_updated = pyqtSignal(dict)
+    gesture_updated = pyqtSignal(dict)
     image_updated = pyqtSignal(object)
+    joint_updated = pyqtSignal(list)
 
     def __init__(self):
         super().__init__("dashboard")
@@ -361,7 +575,7 @@ class DashboardNode(Node):
         self.pub_estop = self.create_publisher(Bool, "/emergency_stop", reliable_qos)
         self.pub_manual_override = self.create_publisher(Bool, "/manual_override", reliable_qos)
 
-        # Subscribers
+        # Subscribers — core system
         self.sub_quality = self.create_subscription(
             FiberQuality, "/fiber_quality", self._on_quality, sensor_qos
         )
@@ -377,15 +591,31 @@ class DashboardNode(Node):
         self.sub_system = self.create_subscription(
             SystemStatus, "/system_status", self._on_system, reliable_qos
         )
+        self.sub_pump = self.create_subscription(
+            String, "/pump_status", self._on_pump, reliable_qos
+        )
         self.sub_image = self.create_subscription(
             Image, "/vision_debug", self._on_image, sensor_qos
         )
+        self.sub_joints = self.create_subscription(
+            JointState, "/joint_states", self._on_joints, sensor_qos
+        )
+
+        # Subscribers — teleoperation
+        self.sub_pose = self.create_subscription(
+            HumanPose, "/human_pose", self._on_pose, sensor_qos
+        )
+        self.sub_gesture = self.create_subscription(
+            HandGesture, "/hand_gesture", self._on_gesture, reliable_qos
+        )
+        self.sub_motion = self.create_subscription(
+            MotionCommand, "/motion_command", self._on_motion, reliable_qos
+        )
 
         self._bridge = CvBridge() if CV_AVAILABLE else None
-        self._latest_frame = None
 
     def _on_quality(self, msg: FiberQuality):
-        data = {
+        self.quality_updated.emit({
             "overall": msg.overall_quality,
             "uniformity": msg.uniformity,
             "diameter": msg.diameter,
@@ -396,11 +626,10 @@ class DashboardNode(Node):
             "coverage": msg.coverage_uniformity,
             "grade": msg.quality_grade,
             "diagnosis": msg.diagnosis,
-        }
-        self.quality_updated.emit(data)
+        })
 
     def _on_collector(self, msg: CollectorStatus):
-        data = {
+        self.collector_updated.emit({
             "rpm": msg.rpm,
             "target_rpm": msg.target_rpm,
             "running": msg.running,
@@ -409,8 +638,7 @@ class DashboardNode(Node):
             "temperature": msg.temperature_c,
             "duty": msg.duty_cycle,
             "estop": msg.emergency_stop,
-        }
-        self.collector_updated.emit(data)
+        })
 
     def _on_robot(self, msg: String):
         try:
@@ -427,14 +655,20 @@ class DashboardNode(Node):
             pass
 
     def _on_system(self, msg: SystemStatus):
-        data = {
+        self.system_updated.emit({
             "state": msg.system_state,
             "sim": msg.simulation_mode,
             "uptime": msg.uptime_s,
             "estop": msg.emergency_stop,
             "quality": msg.quality_current,
-        }
-        self.system_updated.emit(data)
+        })
+
+    def _on_pump(self, msg: String):
+        try:
+            data = json.loads(msg.data)
+            self.pump_updated.emit(data)
+        except json.JSONDecodeError:
+            pass
 
     def _on_image(self, msg: Image):
         if self._bridge:
@@ -444,6 +678,43 @@ class DashboardNode(Node):
                 self.image_updated.emit(rgb_img)
             except Exception:
                 pass
+
+    def _on_joints(self, msg: JointState):
+        self.joint_updated.emit(list(msg.position))
+
+    def _on_pose(self, msg: HumanPose):
+        self.pose_updated.emit({
+            "person_detected": msg.person_detected,
+            "overall_confidence": msg.overall_confidence,
+            "left_shoulder": {"x": msg.left_shoulder_position[0], "y": msg.left_shoulder_position[1], "vis": msg.left_shoulder_visibility},
+            "right_shoulder": {"x": msg.right_shoulder_position[0], "y": msg.right_shoulder_position[1], "vis": msg.right_shoulder_visibility},
+            "left_elbow": {"x": msg.left_elbow_position[0], "y": msg.left_elbow_position[1], "vis": msg.left_elbow_visibility},
+            "right_elbow": {"x": msg.right_elbow_position[0], "y": msg.right_elbow_position[1], "vis": msg.right_elbow_visibility},
+            "left_wrist": {"x": msg.left_wrist_position[0], "y": msg.left_wrist_position[1], "vis": msg.left_wrist_visibility},
+            "right_wrist": {"x": msg.right_wrist_position[0], "y": msg.right_wrist_position[1], "vis": msg.right_wrist_visibility},
+            "left_shoulder_angle": msg.left_shoulder_angle,
+            "left_elbow_angle": msg.left_elbow_angle,
+            "right_shoulder_angle": msg.right_shoulder_angle,
+            "right_elbow_angle": msg.right_elbow_angle,
+        })
+
+    def _on_gesture(self, msg: HandGesture):
+        self.gesture_updated.emit({
+            "gesture_name": msg.gesture_name,
+            "confidence": msg.confidence,
+            "left_hand": msg.left_hand,
+            "right_hand": msg.right_hand,
+            "command": msg.command,
+        })
+
+    def _on_motion(self, msg: MotionCommand):
+        self.motion_updated.emit({
+            "joint_angles": list(msg.target_joint_angles),
+            "is_safe": msg.is_safe,
+            "confidence": msg.confidence,
+            "source": msg.source,
+            "latency_ms": msg.latency_ms,
+        })
 
     def publish_target_rpm(self, rpm: float):
         msg = Float32()
@@ -471,7 +742,7 @@ class DashboardNode(Node):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class DashboardWindow(QMainWindow):
-    """Main industrial dashboard window."""
+    """Main industrial dashboard window with real-time movement displays."""
 
     def __init__(self, ros_node: DashboardNode):
         super().__init__()
@@ -481,7 +752,7 @@ class DashboardWindow(QMainWindow):
 
         title = ros_node.get_parameter("window_title").value
         self.setWindowTitle(title)
-        self.setMinimumSize(1400, 900)
+        self.setMinimumSize(1600, 950)
         self.setStyleSheet(f"""
             QMainWindow {{ background-color: {Colors.BG_DARK}; }}
             QWidget {{ color: {Colors.TEXT_PRIMARY}; font-family: 'JetBrains Mono', 'Consolas', monospace; }}
@@ -520,12 +791,25 @@ class DashboardWindow(QMainWindow):
                 margin: -4px 0;
                 border-radius: 7px;
             }}
+            QTabWidget::pane {{ border: 1px solid {Colors.BORDER}; background: {Colors.BG_PANEL}; }}
+            QTabBar::tab {{
+                background: {Colors.BG_INPUT};
+                color: {Colors.TEXT_SECONDARY};
+                padding: 6px 14px;
+                border: 1px solid {Colors.BORDER};
+                border-bottom: none;
+                border-top-left-radius: 4px;
+                border-top-right-radius: 4px;
+            }}
+            QTabBar::tab:selected {{
+                background: {Colors.BG_PANEL};
+                color: {Colors.ACCENT_BLUE};
+            }}
         """)
 
         self._build_ui()
         self._connect_signals()
 
-        # Refresh timer
         self._timer = QTimer()
         self._timer.timeout.connect(self._tick)
         self._timer.start(50)
@@ -534,17 +818,17 @@ class DashboardWindow(QMainWindow):
         central = QWidget()
         self.setCentralWidget(central)
         main_layout = QHBoxLayout(central)
-        main_layout.setSpacing(8)
-        main_layout.setContentsMargins(8, 8, 8, 8)
+        main_layout.setSpacing(6)
+        main_layout.setContentsMargins(6, 6, 6, 6)
 
-        # ── Left Panel: Camera + Quality ─────────────────────────────────────
+        # ── Left Panel: Camera + Quality + Trends ────────────────────────────
         left_panel = QVBoxLayout()
 
         # Camera feed
         cam_group = QGroupBox("Vision System")
         cam_layout = QVBoxLayout(cam_group)
         self.camera_label = QLabel("No camera feed")
-        self.camera_label.setMinimumSize(480, 360)
+        self.camera_label.setMinimumSize(420, 300)
         self.camera_label.setAlignment(Qt.AlignCenter)
         self.camera_label.setStyleSheet(
             f"background-color: {Colors.BG_CARD}; border: 1px solid {Colors.BORDER}; border-radius: 4px;"
@@ -566,15 +850,30 @@ class DashboardWindow(QMainWindow):
             q_layout.addWidget(bar)
         left_panel.addWidget(quality_group)
 
-        # Quality trend
-        self.quality_trend = TrendGraph("Quality Trend")
-        self.quality_trend.set_color(Colors.ACCENT_CYAN)
-        left_panel.addWidget(self.quality_trend)
+        # Multi-series trend graphs
+        trend_tabs = QTabWidget()
 
+        self.quality_trend = TrendGraph("Quality Trend")
+        self.quality_trend.add_series("overall", Colors.ACCENT_CYAN)
+        self.quality_trend.add_series("uniformity", Colors.ACCENT_GREEN)
+        self.quality_trend.add_series("coverage", Colors.ACCENT_YELLOW)
+        trend_tabs.addTab(self.quality_trend, "Quality")
+
+        self.rpm_trend = TrendGraph("RPM Trend")
+        self.rpm_trend.add_series("actual", Colors.ACCENT_BLUE)
+        self.rpm_trend.add_series("target", Colors.ACCENT_ORANGE)
+        trend_tabs.addTab(self.rpm_trend, "RPM")
+
+        self.flow_trend = TrendGraph("Flow Trend")
+        self.flow_trend.add_series("actual", Colors.ACCENT_CYAN)
+        self.flow_trend.add_series("pressure", Colors.ACCENT_RED)
+        trend_tabs.addTab(self.flow_trend, "Flow")
+
+        left_panel.addWidget(trend_tabs)
         left_panel.addStretch()
         main_layout.addLayout(left_panel, stretch=3)
 
-        # ── Center Panel: Gauges + Controls ──────────────────────────────────
+        # ── Center Panel: Gauges + Robot + Controls ───────────────────────────
         center_panel = QVBoxLayout()
 
         # Gauges row
@@ -596,11 +895,22 @@ class DashboardWindow(QMainWindow):
         gauges_layout.addWidget(self.distance_gauge)
         center_panel.addWidget(gauges_group)
 
+        # Robot arm + Skeleton side by side
+        viz_group = QGroupBox("Real-Time Visualization")
+        viz_layout = QHBoxLayout(viz_group)
+
+        self.robot_arm = RobotArmWidget()
+        viz_layout.addWidget(self.robot_arm)
+
+        self.skeleton = SkeletonWidget()
+        viz_layout.addWidget(self.skeleton)
+
+        center_panel.addWidget(viz_group)
+
         # Manual controls
         controls_group = QGroupBox("Manual Controls")
         ctrl_layout = QGridLayout(controls_group)
 
-        # RPM control
         ctrl_layout.addWidget(QLabel("Target RPM:"), 0, 0)
         self.rpm_slider = QSlider(Qt.Horizontal)
         self.rpm_slider.setRange(0, 3000)
@@ -611,7 +921,6 @@ class DashboardWindow(QMainWindow):
         self.rpm_label.setMinimumWidth(50)
         ctrl_layout.addWidget(self.rpm_label, 0, 2)
 
-        # Flow control
         ctrl_layout.addWidget(QLabel("Flow Rate:"), 1, 0)
         self.flow_slider = QSlider(Qt.Horizontal)
         self.flow_slider.setRange(0, 1000)
@@ -622,7 +931,6 @@ class DashboardWindow(QMainWindow):
         self.flow_label.setMinimumWidth(50)
         ctrl_layout.addWidget(self.flow_label, 1, 2)
 
-        # Mode switch
         ctrl_layout.addWidget(QLabel("Mode:"), 2, 0)
         self.mode_combo = QComboBox()
         self.mode_combo.addItems(["AUTONOMOUS", "MANUAL"])
@@ -631,39 +939,60 @@ class DashboardWindow(QMainWindow):
 
         center_panel.addWidget(controls_group)
 
-        # AI Status
-        ai_group = QGroupBox("AI Controller")
+        # AI + Motion status
+        status_tabs = QTabWidget()
+
+        ai_group = QWidget()
         ai_layout = QVBoxLayout(ai_group)
         self.ai_mode_label = QLabel("Mode: --")
         self.ai_cycle_label = QLabel("Cycle: --")
         self.ai_quality_label = QLabel("Quality: --")
+        self.ai_params_label = QLabel("Params: --")
         self.ai_rationale_label = QLabel("Rationale: --")
         self.ai_rationale_label.setWordWrap(True)
         self.ai_rationale_label.setStyleSheet(
-            f"background-color: {Colors.BG_CARD}; padding: 8px; border-radius: 4px;"
+            f"background-color: {Colors.BG_CARD}; padding: 6px; border-radius: 4px; font-size: 9px;"
         )
         for lbl in [self.ai_mode_label, self.ai_cycle_label,
-                    self.ai_quality_label, self.ai_rationale_label]:
+                    self.ai_quality_label, self.ai_params_label,
+                    self.ai_rationale_label]:
             ai_layout.addWidget(lbl)
-        center_panel.addWidget(ai_group)
+        ai_layout.addStretch()
+        status_tabs.addTab(ai_group, "AI")
 
-        # Robot status
-        robot_group = QGroupBox("Robot Status")
-        robot_layout = QGridLayout(robot_group)
-        self.robot_state_label = QLabel("State: --")
-        self.robot_dist_label = QLabel("Distance: -- mm")
-        self.robot_scan_label = QLabel("Scan: -- mm/s")
-        self.robot_coverage_label = QLabel("Coverage: --")
-        robot_layout.addWidget(self.robot_state_label, 0, 0)
-        robot_layout.addWidget(self.robot_dist_label, 0, 1)
-        robot_layout.addWidget(self.robot_scan_label, 1, 0)
-        robot_layout.addWidget(self.robot_coverage_label, 1, 1)
-        center_panel.addWidget(robot_group)
+        motion_group = QWidget()
+        motion_layout = QVBoxLayout(motion_group)
+        self.motion_angles_label = QLabel("Joint Angles: --")
+        self.motion_safe_label = QLabel("Safe: --")
+        self.motion_conf_label = QLabel("Confidence: --")
+        self.motion_latency_label = QLabel("Latency: --")
+        self.motion_source_label = QLabel("Source: --")
+        for lbl in [self.motion_angles_label, self.motion_safe_label,
+                    self.motion_conf_label, self.motion_latency_label,
+                    self.motion_source_label]:
+            motion_layout.addWidget(lbl)
+        motion_layout.addStretch()
+        status_tabs.addTab(motion_group, "Motion")
 
+        pump_group = QWidget()
+        pump_layout = QVBoxLayout(pump_group)
+        self.pump_flow_label = QLabel("Flow: -- mL/hr")
+        self.pump_setpoint_label = QLabel("Setpoint: -- mL/hr")
+        self.pump_pressure_label = QLabel("Pressure: -- kPa")
+        self.pump_volume_label = QLabel("Volume: -- mL")
+        self.pump_status_label = QLabel("Status: --")
+        for lbl in [self.pump_flow_label, self.pump_setpoint_label,
+                    self.pump_pressure_label, self.pump_volume_label,
+                    self.pump_status_label]:
+            pump_layout.addWidget(lbl)
+        pump_layout.addStretch()
+        status_tabs.addTab(pump_group, "Pump")
+
+        center_panel.addWidget(status_tabs)
         center_panel.addStretch()
         main_layout.addLayout(center_panel, stretch=4)
 
-        # ── Right Panel: Safety + System ─────────────────────────────────────
+        # ── Right Panel: Safety + System + Collector + Teleop ─────────────────
         right_panel = QVBoxLayout()
 
         # E-Stop
@@ -705,13 +1034,28 @@ class DashboardWindow(QMainWindow):
             coll_layout.addWidget(lbl)
         right_panel.addWidget(coll_group)
 
+        # Teleoperation status
+        teleop_group = QGroupBox("Teleoperation")
+        teleop_layout = QVBoxLayout(teleop_group)
+        self.teleop_gesture_label = QLabel("Gesture: --")
+        self.teleop_conf_label = QLabel("Confidence: --")
+        self.teleop_l_angle_label = QLabel("L Arm: -- / --")
+        self.teleop_r_angle_label = QLabel("R Arm: -- / --")
+        self.teleop_tracking_label = QLabel("Tracking: NO")
+        self.teleop_tracking_label.setStyleSheet(f"color: {Colors.ERROR}; font-weight: bold;")
+        for lbl in [self.teleop_gesture_label, self.teleop_conf_label,
+                    self.teleop_l_angle_label, self.teleop_r_angle_label,
+                    self.teleop_tracking_label]:
+            teleop_layout.addWidget(lbl)
+        right_panel.addWidget(teleop_group)
+
         # Diagnosis
         diag_group = QGroupBox("Diagnosis")
         diag_layout = QVBoxLayout(diag_group)
         self.diag_label = QLabel("nominal")
         self.diag_label.setWordWrap(True)
         self.diag_label.setStyleSheet(
-            f"background-color: {Colors.BG_CARD}; padding: 8px; border-radius: 4px; font-size: 11px;"
+            f"background-color: {Colors.BG_CARD}; padding: 6px; border-radius: 4px; font-size: 10px;"
         )
         diag_layout.addWidget(self.diag_label)
         right_panel.addWidget(diag_group)
@@ -731,32 +1075,42 @@ class DashboardWindow(QMainWindow):
         self.ros.robot_updated.connect(self._update_robot)
         self.ros.ai_updated.connect(self._update_ai)
         self.ros.system_updated.connect(self._update_system)
+        self.ros.pump_updated.connect(self._update_pump)
+        self.ros.pose_updated.connect(self._update_pose)
+        self.ros.gesture_updated.connect(self._update_gesture)
+        self.ros.motion_updated.connect(self._update_motion)
         self.ros.image_updated.connect(self._update_image)
+        self.ros.joint_updated.connect(self._update_joints)
 
     # ── Slot handlers ────────────────────────────────────────────────────────
 
     def _update_quality(self, data: dict):
-        self.q_overall.set_value(data.get("overall", 0))
+        overall = data.get("overall", 0)
+        self.q_overall.set_value(overall)
         self.q_uniformity.set_value(data.get("uniformity", 0))
         self.q_bead.set_value(data.get("bead_score", 0))
         self.q_cone.set_value(data.get("cone_score", 0))
         self.q_coverage.set_value(data.get("coverage", 0))
         self.q_density.set_value(data.get("density", 0))
-        self.quality_gauge.set_value(data.get("overall", 0) * 100)
-        self.quality_trend.add_point(data.get("overall", 0))
+        self.quality_gauge.set_value(overall * 100)
+        self.quality_trend.add_point("overall", overall)
+        self.quality_trend.add_point("uniformity", data.get("uniformity", 0))
+        self.quality_trend.add_point("coverage", data.get("coverage", 0))
         self.diag_label.setText(data.get("diagnosis", "nominal"))
         grade = data.get("grade", 0)
         grade_names = ["UNUSABLE", "POOR", "FAIR", "GOOD", "EXCELLENT"]
         color = [Colors.ERROR, Colors.ERROR, Colors.WARNING,
                  Colors.SUCCESS, Colors.SUCCESS][min(grade, 4)]
         self.diag_label.setStyleSheet(
-            f"background-color: {Colors.BG_CARD}; padding: 8px; border-radius: 4px; "
-            f"font-size: 11px; color: {color};"
+            f"background-color: {Colors.BG_CARD}; padding: 6px; border-radius: 4px; "
+            f"font-size: 10px; color: {color};"
         )
 
     def _update_collector(self, data: dict):
         rpm = data.get("rpm", 0)
+        target = data.get("target_rpm", 0)
         self.rpm_gauge.set_value(rpm)
+        self.rpm_gauge.set_target(target)
         self.coll_running_label.setText(f"Running: {'YES' if data.get('running') else 'NO'}")
         self.coll_setpoint_label.setText(f"At Setpoint: {'YES' if data.get('at_setpoint') else 'NO'}")
         vib = data.get("vibration", 0)
@@ -765,19 +1119,27 @@ class DashboardWindow(QMainWindow):
         self.coll_vibration_label.setStyleSheet(f"color: {vib_color};")
         self.coll_temp_label.setText(f"Temp: {data.get('temperature', 0):.1f} C")
         self.coll_duty_label.setText(f"Duty: {data.get('duty', 0) * 100:.0f} %")
+        self.rpm_trend.add_point("actual", rpm / 3000.0)
+        self.rpm_trend.add_point("target", target / 3000.0)
 
     def _update_robot(self, data: dict):
-        self.robot_state_label.setText(f"State: {data.get('state', '--')}")
-        self.robot_dist_label.setText(f"Distance: {data.get('distance_mm', 0):.1f} mm")
-        self.robot_scan_label.setText(f"Scan: {data.get('scan_speed', 0):.1f} mm/s")
-        self.robot_coverage_label.setText(f"Coverage: {data.get('coverage_mean', 0):.3f}")
-        self.distance_gauge.set_value(data.get('distance_mm', 0))
+        self.distance_gauge.set_value(data.get("distance_mm", 0))
+        angles = data.get("joint_angles", [])
+        if angles:
+            self.robot_arm.set_angles([math.radians(a) for a in angles])
 
     def _update_ai(self, data: dict):
         self.ai_mode_label.setText(f"Mode: {data.get('mode', '--')}")
         self.ai_cycle_label.setText(f"Cycle: {data.get('cycle', 0)}")
         self.ai_quality_label.setText(f"Quality: {data.get('current_quality', 0):.3f}")
-        self.ai_rationale_label.setText(data.get('rationale', '--'))
+        params = data.get("params", {})
+        if params:
+            self.ai_params_label.setText(
+                f"Dist={params.get('distance_mm', 0):.0f}mm "
+                f"RPM={params.get('rpm', 0):.0f} "
+                f"Flow={params.get('flow_rate', 0):.2f}"
+            )
+        self.ai_rationale_label.setText(data.get("rationale", "--"))
 
     def _update_system(self, data: dict):
         states = ["OFF", "INIT", "READY", "RUNNING", "ERROR", "E-STOP"]
@@ -787,15 +1149,65 @@ class DashboardWindow(QMainWindow):
         uptime = data.get("uptime", 0)
         self.sys_uptime_label.setText(f"Uptime: {uptime:.0f}s")
 
+    def _update_pump(self, data: dict):
+        flow = data.get("actual_flow_ml_hr", 0)
+        pressure = data.get("pressure_kpa", 0)
+        self.flow_gauge.set_value(flow)
+        self.pump_flow_label.setText(f"Flow: {flow:.3f} mL/hr")
+        self.pump_setpoint_label.setText(f"Setpoint: {data.get('setpoint_ml_hr', 0):.3f} mL/hr")
+        self.pump_pressure_label.setText(f"Pressure: {pressure:.1f} kPa")
+        self.pump_volume_label.setText(f"Volume: {data.get('volume_remaining_ml', 0):.1f} mL")
+        self.pump_status_label.setText(f"Status: {'RUNNING' if data.get('pump_running') else 'STOPPED'}")
+        self.flow_trend.add_point("actual", flow / 10.0)
+        self.flow_trend.add_point("pressure", min(1.0, pressure / 50.0))
+
+    def _update_pose(self, data: dict):
+        self.skeleton.set_pose(data)
+        tracking = data.get("person_detected", False)
+        self.teleop_tracking_label.setText(f"Tracking: {'YES' if tracking else 'NO'}")
+        self.teleop_tracking_label.setStyleSheet(
+            f"color: {Colors.SUCCESS if tracking else Colors.ERROR}; font-weight: bold;"
+        )
+        self.teleop_conf_label.setText(f"Confidence: {data.get('overall_confidence', 0):.2f}")
+        la = data.get("left_shoulder_angle", 0)
+        le = data.get("left_elbow_angle", 0)
+        ra = data.get("right_shoulder_angle", 0)
+        re = data.get("right_elbow_angle", 0)
+        self.teleop_l_angle_label.setText(f"L Arm: {math.degrees(la):.0f} / {math.degrees(le):.0f} deg")
+        self.teleop_r_angle_label.setText(f"R Arm: {math.degrees(ra):.0f} / {math.degrees(re):.0f} deg")
+
+    def _update_gesture(self, data: dict):
+        self.skeleton.set_gesture(data.get("gesture_name", "none"))
+        self.teleop_gesture_label.setText(f"Gesture: {data.get('gesture_name', 'none')}")
+
+    def _update_motion(self, data: dict):
+        angles = data.get("joint_angles", [])
+        if angles:
+            self.robot_arm.set_targets(angles)
+            deg_str = " / ".join(f"{math.degrees(a):+.0f}" for a in angles)
+            self.motion_angles_label.setText(f"Angles: {deg_str} deg")
+        self.motion_safe_label.setText(f"Safe: {'YES' if data.get('is_safe') else 'NO'}")
+        self.motion_safe_label.setStyleSheet(
+            f"color: {Colors.SUCCESS if data.get('is_safe') else Colors.ERROR};"
+        )
+        self.motion_conf_label.setText(f"Confidence: {data.get('confidence', 0):.2f}")
+        self.motion_latency_label.setText(f"Latency: {data.get('latency_ms', 0):.1f} ms")
+        sources = ["TELEOP_L", "TELEOP_R", "GESTURE", "AUTO"]
+        src = sources[data.get("source", 0)] if data.get("source", 0) < len(sources) else "--"
+        self.motion_source_label.setText(f"Source: {src}")
+
     def _update_image(self, img):
         if img is not None:
             h, w, ch = img.shape
-            from PyQt5.QtGui import QImage, QPixmap
             q_img = QImage(img.data, w, h, ch * w, QImage.Format_RGB888)
             pixmap = QPixmap.fromImage(q_img).scaled(
                 self.camera_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation
             )
             self.camera_label.setPixmap(pixmap)
+
+    def _update_joints(self, angles: list):
+        if angles:
+            self.robot_arm.set_angles(angles)
 
     # ── Control handlers ─────────────────────────────────────────────────────
 
@@ -822,15 +1234,11 @@ class DashboardWindow(QMainWindow):
         self.ros.publish_estop(self._estop_active)
         if self._estop_active:
             self.estop_status.setText("E-STOP: ACTIVE")
-            self.estop_status.setStyleSheet(
-                f"color: {Colors.ERROR}; font-weight: bold;"
-            )
+            self.estop_status.setStyleSheet(f"color: {Colors.ERROR}; font-weight: bold;")
             self.statusBar().showMessage("EMERGENCY STOP ACTIVATED")
         else:
             self.estop_status.setText("E-STOP: CLEAR")
-            self.estop_status.setStyleSheet(
-                f"color: {Colors.SUCCESS}; font-weight: bold;"
-            )
+            self.estop_status.setStyleSheet(f"color: {Colors.SUCCESS}; font-weight: bold;")
             self.statusBar().showMessage("Emergency stop cleared")
 
     def _tick(self):
@@ -853,7 +1261,6 @@ def main(args=None):
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
 
-    # Dark palette
     palette = QPalette()
     palette.setColor(QPalette.Window, QColor(Colors.BG_DARK))
     palette.setColor(QPalette.WindowText, QColor(Colors.TEXT_PRIMARY))
@@ -871,7 +1278,6 @@ def main(args=None):
     window = DashboardWindow(ros_node)
     window.show()
 
-    # Spin ROS2 in a background thread
     spin_thread = threading.Thread(target=lambda: rclpy.spin(ros_node), daemon=True)
     spin_thread.start()
 
