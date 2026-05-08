@@ -1,0 +1,8 @@
+ai_controller:
+  ros__parameters:
+    optimization_mode: "adaptive"
+    decision_frequency_hz: 2.0
+    quality_target: 0.75
+    command_smoothing_alpha: 0.3
+    enable_voltage_control: false
+    min_quality_for_adaptation: 0.1

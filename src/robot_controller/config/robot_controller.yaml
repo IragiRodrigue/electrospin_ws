@@ -1,0 +1,11 @@
+robot_controller:
+  ros__parameters:
+    simulation_mode: true
+    serial_port: "/dev/ttyUSB0"
+    baud_rate: 115200
+    control_frequency: 10.0
+    default_distance_mm: 150.0
+    scan_amplitude_mm: 40.0
+    scan_speed_mms: 5.0
+    enable_trajectory_smoothing: true
+    enable_singularity_avoidance: true

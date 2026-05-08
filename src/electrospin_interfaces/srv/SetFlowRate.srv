@@ -1,0 +1,5 @@
+# SetFlowRate.srv — Set syringe pump flow rate
+float32 target_flow_ml_hr
+---
+bool    success
+string  message

@@ -1,0 +1,7 @@
+syringe_pump_controller:
+  ros__parameters:
+    simulation_mode: true
+    publish_hz: 10.0
+    max_flow_ml_hr: 10.0
+    pressure_limit_kpa: 50.0
+    syringe_volume_ml: 20.0

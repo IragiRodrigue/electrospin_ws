@@ -1,0 +1,18 @@
+# OptimizeProcess.action — Long-running AI optimization action
+# Goal
+float32 quality_target          # Target quality score (0–1)
+float32 timeout_s               # Max optimization time
+---
+# Result
+bool    success
+float32 final_quality
+float32 final_distance_mm
+float32 final_rpm
+float32 final_flow_rate
+float32 final_voltage_kv
+string  optimization_log
+---
+# Feedback
+float32 current_quality
+uint8   cycle_count
+string  current_rationale

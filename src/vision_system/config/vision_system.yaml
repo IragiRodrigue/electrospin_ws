@@ -1,0 +1,9 @@
+vision_system:
+  ros__parameters:
+    simulation_mode: true
+    camera_index: 0
+    processing_fps: 10.0
+    use_yolo: false
+    yolo_model_path: ""
+    temporal_smoothing: true
+    debug_visualization: true

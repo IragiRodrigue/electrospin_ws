@@ -1,0 +1,4 @@
+electrospin_bringup:
+  ros__parameters:
+    simulation_mode: true
+    watchdog_timeout_s: 5.0

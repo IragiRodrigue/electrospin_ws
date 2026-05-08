@@ -1,0 +1,5 @@
+# SetDistance.srv — Set needle-to-collector distance
+float32 target_distance_mm
+---
+bool    success
+string  message

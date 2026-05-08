@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>electrospin_bringup</name>
+  <version>1.0.0</version>
+  <description>Master bringup package for the ElectroSpin autonomous nanofiber fabrication platform</description>
+  <maintainer email="electrospin@platform.dev">ElectroSpin Platform</maintainer>
+  <license>Apache-2.0</license>
+
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+  <depend>electrospin_interfaces</depend>
+
+  <exec_depend>robot_controller</exec_depend>
+  <exec_depend>collector_controller</exec_depend>
+  <exec_depend>syringe_controller</exec_depend>
+  <exec_depend>vision_system</exec_depend>
+  <exec_depend>ai_controller</exec_depend>
+  <exec_depend>dashboard_ui</exec_depend>
+  <exec_depend>simulation_system</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

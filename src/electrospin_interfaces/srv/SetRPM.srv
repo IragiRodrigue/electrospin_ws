@@ -1,0 +1,5 @@
+# SetRPM.srv — Set collector target RPM
+float32 target_rpm
+---
+bool    success
+string  message

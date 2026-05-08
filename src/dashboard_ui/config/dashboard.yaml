@@ -1,0 +1,4 @@
+dashboard:
+  ros__parameters:
+    simulation_mode: true
+    window_title: "ElectroSpin Control Platform"

@@ -1,0 +1,12 @@
+collector_controller:
+  ros__parameters:
+    simulation_mode: true
+    control_frequency_hz: 50.0
+    publish_frequency_hz: 20.0
+    pid_kp: 0.8
+    pid_ki: 0.15
+    pid_kd: 0.05
+    max_rpm: 3000.0
+    ramp_rate_rpm_s: 100.0
+    rpm_tolerance: 5.0
+    max_vibration_score: 0.6
