@@ -92,10 +92,6 @@ def generate_launch_description():
             {"enable_trajectory_smoothing": True},
             {"enable_singularity_avoidance": True},
         ],
-        remappings=[
-            ("/joint_states",        "/joint_states"),
-            ("/electrospin_command", "/electrospin/command"),
-        ],
         output="screen",
         emulate_tty=True,
     )
@@ -224,6 +220,21 @@ def generate_launch_description():
     )
 
     # ─────────────────────────────────────────────────────────────────────────
+    # Command Bridge (decomposes ElectrospinCommand to individual setpoints)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    command_bridge_node = Node(
+        package="electrospin_bringup",
+        executable="command_bridge",
+        name="command_bridge",
+        namespace=ns,
+        parameters=[
+            {"simulation_mode": sim_mode},
+        ],
+        output="screen",
+    )
+
+    # ─────────────────────────────────────────────────────────────────────────
     # Launch Description Assembly
     # ─────────────────────────────────────────────────────────────────────────
 
@@ -251,4 +262,6 @@ def generate_launch_description():
         simulation_launch,
         # System monitor
         system_monitor_node,
+        # Command bridge
+        command_bridge_node,
     ])

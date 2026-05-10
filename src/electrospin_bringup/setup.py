@@ -19,6 +19,7 @@ setup(
     entry_points={
         'console_scripts': [
             'system_monitor = electrospin_bringup.system_monitor_node:main',
+            'command_bridge = electrospin_bringup.command_bridge_node:main',
         ],
     },
 )

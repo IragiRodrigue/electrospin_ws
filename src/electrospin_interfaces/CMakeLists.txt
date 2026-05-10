@@ -9,6 +9,10 @@ find_package(ament_cmake REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(std_msgs REQUIRED)
 
+install(DIRECTORY resource/
+  DESTINATION share/${PROJECT_NAME}/resource
+)
+
 # Messages
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/FiberQuality.msg"

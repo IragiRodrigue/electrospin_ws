@@ -1,4 +1,4 @@
-syringe_pump_controller:
+syringe_pump:
   ros__parameters:
     simulation_mode: true
     publish_hz: 10.0
