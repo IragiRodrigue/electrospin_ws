@@ -58,7 +58,7 @@ def generate_launch_description():
             PythonLaunchDescriptionSource([
                 os.path.join(
                     get_package_share_directory('gazebo_ros'),
-                    'launch', 'gz_server.launch.py'
+                    'launch', 'gzserver.launch.py'
                 )
             ]),
             launch_arguments={
@@ -72,7 +72,7 @@ def generate_launch_description():
             PythonLaunchDescriptionSource([
                 os.path.join(
                     get_package_share_directory('gazebo_ros'),
-                    'launch', 'gz_client.launch.py'
+                    'launch', 'gzclient.launch.py'
                 )
             ]),
             launch_arguments={
