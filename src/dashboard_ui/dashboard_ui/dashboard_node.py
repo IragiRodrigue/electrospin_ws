@@ -554,6 +554,8 @@ class DashboardNode(Node):
     image_updated = pyqtSignal(object)
     joint_updated = pyqtSignal(list)
     digital_twin_updated = pyqtSignal(dict)
+    maintenance_updated = pyqtSignal(dict)
+    twin_camera_updated = pyqtSignal(object)
 
     def __init__(self):
         super().__init__("dashboard")
@@ -632,6 +634,15 @@ class DashboardNode(Node):
         self.sub_collector_twin = self.create_subscription(
             String, "/collector/state", self._on_collector_twin, reliable_qos
         )
+        self.sub_maintenance = self.create_subscription(
+            String, "/maintenance/status", self._on_maintenance, reliable_qos
+        )
+        self.sub_maintenance_alerts = self.create_subscription(
+            String, "/maintenance/alerts", self._on_maintenance_alerts, reliable_qos
+        )
+        self.sub_twin_camera = self.create_subscription(
+            Image, "/digital_twin/camera_debug", self._on_twin_camera, sensor_qos
+        )
 
         # Digital twin state cache
         self._dt_state = {
@@ -640,7 +651,14 @@ class DashboardNode(Node):
             "dep_coverage": 0.0, "dep_total_mg": 0.0,
             "pump_roller_rpm": 0.0,
             "collector_vibration": 0.0, "collector_temp": 25.0,
+            "pump_tubing_wear": 0.0, "pump_roller_wear": 0.0,
+            "pump_motor_temp_c": 25.0,
+            "collector_bearing_wear": 0.0, "collector_belt_wear": 0.0,
+            "hv_arc_count": 0, "hv_insulation_wear": 0.0,
+            "health_score": 1.0,
         }
+        self._maintenance_data = {}
+        self._maintenance_alerts = []
 
         self._bridge = CvBridge() if CV_AVAILABLE else None
 
@@ -786,9 +804,36 @@ class DashboardNode(Node):
             data = json.loads(msg.data)
             self._dt_state["collector_vibration"] = data.get("vibration", 0)
             self._dt_state["collector_temp"] = data.get("temperature_c", 25)
+            self._dt_state["collector_bearing_wear"] = data.get("bearing_wear", 0)
+            self._dt_state["collector_belt_wear"] = data.get("belt_wear", 0)
             self.digital_twin_updated.emit(dict(self._dt_state))
         except json.JSONDecodeError:
             pass
+
+    def _on_maintenance(self, msg: String):
+        try:
+            self._maintenance_data = json.loads(msg.data)
+            self._dt_state["health_score"] = self._maintenance_data.get("health_score", 1.0)
+            self.digital_twin_updated.emit(dict(self._dt_state))
+            self.maintenance_updated.emit(self._maintenance_data)
+        except json.JSONDecodeError:
+            pass
+
+    def _on_maintenance_alerts(self, msg: String):
+        try:
+            data = json.loads(msg.data)
+            self._maintenance_alerts = data.get("alerts", [])
+        except json.JSONDecodeError:
+            pass
+
+    def _on_twin_camera(self, msg: Image):
+        if self._bridge:
+            try:
+                cv_img = self._bridge.imgmsg_to_cv2(msg, "bgr8")
+                rgb_img = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
+                self.twin_camera_updated.emit(rgb_img)
+            except Exception:
+                pass
 
     def publish_target_rpm(self, rpm: float):
         msg = Float32()
@@ -1145,12 +1190,42 @@ class DashboardWindow(QMainWindow):
         self.dt_roller_label = QLabel("Pump Roller: 0.0 RPM")
         self.dt_vibration_label = QLabel("Vibration: 0.00")
         self.dt_collector_temp_label = QLabel("Motor Temp: 25.0 C")
+        self.dt_health_label = QLabel("Health: 100%")
+        self.dt_health_label.setStyleSheet(f"color: {Colors.SUCCESS}; font-weight: bold;")
+        self.dt_pump_wear_label = QLabel("Pump Wear: Tubing 0% / Roller 0%")
+        self.dt_coll_wear_label = QLabel("Coll Wear: Bearing 0% / Belt 0%")
+        self.dt_hv_wear_label = QLabel("HV Wear: Insulation 0% / Arcs 0")
         for lbl in [self.dt_hv_label, self.dt_hv_current_label,
                     self.dt_temp_label, self.dt_humidity_label,
                     self.dt_deposition_label, self.dt_roller_label,
-                    self.dt_vibration_label, self.dt_collector_temp_label]:
+                    self.dt_vibration_label, self.dt_collector_temp_label,
+                    self.dt_health_label, self.dt_pump_wear_label,
+                    self.dt_coll_wear_label, self.dt_hv_wear_label]:
             dt_layout.addWidget(lbl)
         right_panel.addWidget(dt_group)
+
+        # Maintenance Alerts
+        maint_group = QGroupBox("Maintenance Alerts")
+        maint_layout = QVBoxLayout(maint_group)
+        self.maint_alert_label = QLabel("No alerts")
+        self.maint_alert_label.setWordWrap(True)
+        self.maint_alert_label.setStyleSheet(
+            f"background-color: {Colors.BG_CARD}; padding: 6px; border-radius: 4px; font-size: 9px;"
+        )
+        maint_layout.addWidget(self.maint_alert_label)
+        right_panel.addWidget(maint_group)
+
+        # Digital Twin Camera
+        twin_cam_group = QGroupBox("Twin Camera")
+        twin_cam_layout = QVBoxLayout(twin_cam_group)
+        self.twin_cam_label = QLabel("No twin camera")
+        self.twin_cam_label.setMinimumSize(200, 150)
+        self.twin_cam_label.setAlignment(Qt.AlignCenter)
+        self.twin_cam_label.setStyleSheet(
+            f"background-color: {Colors.BG_CARD}; border: 1px solid {Colors.BORDER}; border-radius: 4px;"
+        )
+        twin_cam_layout.addWidget(self.twin_cam_label)
+        right_panel.addWidget(twin_cam_group)
 
         right_panel.addStretch()
         main_layout.addLayout(right_panel, stretch=2)
@@ -1174,6 +1249,8 @@ class DashboardWindow(QMainWindow):
         self.ros.image_updated.connect(self._update_image)
         self.ros.joint_updated.connect(self._update_joints)
         self.ros.digital_twin_updated.connect(self._update_digital_twin)
+        self.ros.maintenance_updated.connect(self._update_maintenance)
+        self.ros.twin_camera_updated.connect(self._update_twin_camera)
 
     # ── Slot handlers ────────────────────────────────────────────────────────
 
@@ -1326,6 +1403,48 @@ class DashboardWindow(QMainWindow):
         self.dt_vibration_label.setText(f"Vibration: {vib:.3f}")
         self.dt_vibration_label.setStyleSheet(f"color: {vib_color};")
         self.dt_collector_temp_label.setText(f"Motor Temp: {ct:.1f} C")
+
+        # Health score
+        health = data.get("health_score", 1.0)
+        health_color = Colors.SUCCESS if health > 0.6 else (Colors.WARNING if health > 0.3 else Colors.ERROR)
+        self.dt_health_label.setText(f"Health: {health*100:.0f}%")
+        self.dt_health_label.setStyleSheet(f"color: {health_color}; font-weight: bold;")
+
+        # Wear indicators
+        ptw = data.get("pump_tubing_wear", 0)
+        prw = data.get("pump_roller_wear", 0)
+        self.dt_pump_wear_label.setText(f"Pump Wear: Tub {ptw*100:.0f}% / Roller {prw*100:.0f}%")
+        cbw = data.get("collector_bearing_wear", 0)
+        cbtw = data.get("collector_belt_wear", 0)
+        self.dt_coll_wear_label.setText(f"Coll Wear: Bearing {cbw*100:.0f}% / Belt {cbtw*100:.0f}%")
+        hiw = data.get("hv_insulation_wear", 0)
+        hac = data.get("hv_arc_count", 0)
+        self.dt_hv_wear_label.setText(f"HV Wear: Insul {hiw*100:.0f}% / Arcs {hac}")
+
+    def _update_maintenance(self, data: dict):
+        alerts = data.get("alerts", [])
+        if alerts:
+            alert_text = "\n".join(alerts[:5])
+            self.maint_alert_label.setText(alert_text)
+            self.maint_alert_label.setStyleSheet(
+                f"background-color: {Colors.BG_CARD}; padding: 6px; border-radius: 4px; "
+                f"font-size: 9px; color: {Colors.ERROR};"
+            )
+        else:
+            self.maint_alert_label.setText("No alerts")
+            self.maint_alert_label.setStyleSheet(
+                f"background-color: {Colors.BG_CARD}; padding: 6px; border-radius: 4px; "
+                f"font-size: 9px; color: {Colors.SUCCESS};"
+            )
+
+    def _update_twin_camera(self, img):
+        if img is not None:
+            h, w, ch = img.shape
+            q_img = QImage(img.data, w, h, ch * w, QImage.Format_RGB888)
+            pixmap = QPixmap.fromImage(q_img).scaled(
+                self.twin_cam_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation
+            )
+            self.twin_cam_label.setPixmap(pixmap)
 
     # ── Control handlers ─────────────────────────────────────────────────────
 
