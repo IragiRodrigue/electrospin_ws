@@ -2,10 +2,11 @@
 <sdf version="1.6">
   <world name="electrospin_lab">
 
-    <!-- Physics -->
+    <!-- Physics — ODE with gravity for realistic dynamics -->
     <physics type="ode">
       <max_step_size>0.001</max_step_size>
       <real_time_factor>1.0</real_time_factor>
+      <gravity>0 0 -9.81</gravity>
     </physics>
 
     <!-- Scene -->
@@ -78,20 +79,41 @@
         <collision name="collision">
           <geometry>
             <box>
-              <size>1.2 0.8 0.04</size>
+              <size>1.4 0.9 0.04</size>
             </box>
           </geometry>
         </collision>
         <visual name="top">
           <geometry>
             <box>
-              <size>1.2 0.8 0.04</size>
+              <size>1.4 0.9 0.04</size>
             </box>
           </geometry>
           <material>
             <ambient>0.3 0.3 0.3 1</ambient>
             <diffuse>0.35 0.35 0.35 1</diffuse>
           </material>
+        </visual>
+        <!-- Table legs -->
+        <visual name="leg1">
+          <pose>-0.6 -0.35 -0.4 0 0 0</pose>
+          <geometry><cylinder><radius>0.025</radius><length>0.8</length></cylinder></geometry>
+          <material><ambient>0.2 0.2 0.2 1</ambient><diffuse>0.25 0.25 0.25 1</diffuse></material>
+        </visual>
+        <visual name="leg2">
+          <pose>0.6 -0.35 -0.4 0 0 0</pose>
+          <geometry><cylinder><radius>0.025</radius><length>0.8</length></cylinder></geometry>
+          <material><ambient>0.2 0.2 0.2 1</ambient><diffuse>0.25 0.25 0.25 1</diffuse></material>
+        </visual>
+        <visual name="leg3">
+          <pose>-0.6 0.35 -0.4 0 0 0</pose>
+          <geometry><cylinder><radius>0.025</radius><length>0.8</length></cylinder></geometry>
+          <material><ambient>0.2 0.2 0.2 1</ambient><diffuse>0.25 0.25 0.25 1</diffuse></material>
+        </visual>
+        <visual name="leg4">
+          <pose>0.6 0.35 -0.4 0 0 0</pose>
+          <geometry><cylinder><radius>0.025</radius><length>0.8</length></cylinder></geometry>
+          <material><ambient>0.2 0.2 0.2 1</ambient><diffuse>0.25 0.25 0.25 1</diffuse></material>
         </visual>
       </link>
     </model>
@@ -101,81 +123,410 @@
       <static>true</static>
       <pose>0 0 0 0 0 0</pose>
       <link name="link">
-        <!-- Back wall -->
+        <collision name="back_collision">
+          <pose>0 -0.5 0.6 0 0 0</pose>
+          <geometry><box><size>1.4 0.01 1.2</size></box></geometry>
+        </collision>
         <visual name="back">
           <pose>0 -0.5 0.6 0 0 0</pose>
-          <geometry>
-            <box>
-              <size>1.2 0.01 1.2</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.2 0.3 0.4 0.3</ambient>
-            <diffuse>0.3 0.4 0.5 0.3</diffuse>
-          </material>
+          <geometry><box><size>1.4 0.005 1.2</size></box></geometry>
+          <material><ambient>0.2 0.3 0.4 0.3</ambient><diffuse>0.3 0.4 0.5 0.3</diffuse></material>
         </visual>
-        <!-- Left wall -->
+        <collision name="left_collision">
+          <pose>-0.7 0 0.6 0 0 0</pose>
+          <geometry><box><size>0.01 1.0 1.2</size></box></geometry>
+        </collision>
         <visual name="left">
-          <pose>-0.6 0 0.6 0 0 0</pose>
-          <geometry>
-            <box>
-              <size>0.01 1.0 1.2</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.2 0.3 0.4 0.3</ambient>
-            <diffuse>0.3 0.4 0.5 0.3</diffuse>
-          </material>
+          <pose>-0.7 0 0.6 0 0 0</pose>
+          <geometry><box><size>0.005 1.0 1.2</size></box></geometry>
+          <material><ambient>0.2 0.3 0.4 0.3</ambient><diffuse>0.3 0.4 0.5 0.3</diffuse></material>
         </visual>
-        <!-- Right wall -->
+        <collision name="right_collision">
+          <pose>0.7 0 0.6 0 0 0</pose>
+          <geometry><box><size>0.01 1.0 1.2</size></box></geometry>
+        </collision>
         <visual name="right">
-          <pose>0.6 0 0.6 0 0 0</pose>
-          <geometry>
-            <box>
-              <size>0.01 1.0 1.2</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.2 0.3 0.4 0.3</ambient>
-            <diffuse>0.3 0.4 0.5 0.3</diffuse>
-          </material>
+          <pose>0.7 0 0.6 0 0 0</pose>
+          <geometry><box><size>0.005 1.0 1.2</size></box></geometry>
+          <material><ambient>0.2 0.3 0.4 0.3</ambient><diffuse>0.3 0.4 0.5 0.3</diffuse></material>
         </visual>
       </link>
     </model>
 
-    <!-- High voltage power supply (visual only) -->
-    <model name="hv_supply">
-      <static>true</static>
-      <pose>-0.4 0.3 0.44 0 0 0</pose>
-      <link name="link">
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         DIGITAL TWIN: Peristaltic Pump
+         Connected to robot via tubing. Rotating roller head animates.
+         Publishes: /pump/flow_rate, /pump/pressure, /pump/start
+    ═══════════════════════════════════════════════════════════════════════ -->
+    <model name="peristaltic_pump">
+      <pose>0.35 0.25 0.46 0 0 0</pose>
+      <link name="pump_base">
+        <pose>0 0 0 0 0 0</pose>
+        <inertial>
+          <mass>2.5</mass>
+          <inertia>
+            <ixx>0.01</ixx><ixy>0</ixy><ixz>0</ixz>
+            <iyy>0.012</iyy><iyz>0</iyz><izz>0.008</izz>
+          </inertia>
+        </inertial>
+        <collision name="body_collision">
+          <geometry><box><size>0.12 0.10 0.10</size></box></geometry>
+        </collision>
         <visual name="body">
-          <geometry>
-            <box>
-              <size>0.15 0.25 0.12</size>
-            </box>
-          </geometry>
+          <geometry><box><size>0.12 0.10 0.10</size></box></geometry>
+          <material>
+            <ambient>0.2 0.2 0.25 1</ambient>
+            <diffuse>0.25 0.25 0.3 1</diffuse>
+          </material>
+        </visual>
+        <!-- Pump head housing -->
+        <visual name="head_housing">
+          <pose>0 0 0.06 0 0 0</pose>
+          <geometry><cylinder><radius>0.035</radius><length>0.04</length></cylinder></geometry>
+          <material>
+            <ambient>0.15 0.15 0.2 1</ambient>
+            <diffuse>0.2 0.2 0.25 1</diffuse>
+          </material>
+        </visual>
+        <!-- Display panel -->
+        <visual name="display">
+          <pose>0.061 0 0.02 0 1.5708 0</pose>
+          <geometry><box><size>0.04 0.001 0.03</size></box></geometry>
+          <material>
+            <ambient>0.0 0.15 0.0 1</ambient>
+            <diffuse>0.0 0.2 0.05 1</diffuse>
+            <emissive>0.0 0.3 0.05 1</emissive>
+          </material>
+        </visual>
+      </link>
+
+      <!-- Rotating roller head (animated) -->
+      <link name="pump_roller">
+        <pose>0 0 0.06 0 0 0</pose>
+        <inertial>
+          <mass>0.1</mass>
+          <inertia>
+            <ixx>0.0001</ixx><ixy>0</ixy><ixz>0</ixz>
+            <iyy>0.0001</iyy><iyz>0</iyz><izz>0.00005</izz>
+          </inertia>
+        </inertial>
+        <visual name="roller_hub">
+          <geometry><cylinder><radius>0.015</radius><length>0.035</length></cylinder></geometry>
+          <material>
+            <ambient>0.4 0.4 0.4 1</ambient>
+            <diffuse>0.5 0.5 0.5 1</diffuse>
+          </material>
+        </visual>
+        <!-- 3 rollers -->
+        <visual name="roller1">
+          <pose>0.025 0 0 0 0 0</pose>
+          <geometry><cylinder><radius>0.006</radius><length>0.03</length></cylinder></geometry>
+          <material><ambient>0.3 0.3 0.3 1</ambient><diffuse>0.4 0.4 0.4 1</diffuse></material>
+        </visual>
+        <visual name="roller2">
+          <pose>-0.0125 0.0217 0 0 0 0</pose>
+          <geometry><cylinder><radius>0.006</radius><length>0.03</length></cylinder></geometry>
+          <material><ambient>0.3 0.3 0.3 1</ambient><diffuse>0.4 0.4 0.4 1</diffuse></material>
+        </visual>
+        <visual name="roller3">
+          <pose>-0.0125 -0.0217 0 0 0 0</pose>
+          <geometry><cylinder><radius>0.006</radius><length>0.03</length></cylinder></geometry>
+          <material><ambient>0.3 0.3 0.3 1</ambient><diffuse>0.4 0.4 0.4 1</diffuse></material>
+        </visual>
+      </link>
+
+      <joint name="pump_roller_joint" type="revolute">
+        <parent>pump_base</parent>
+        <child>pump_roller</child>
+        <pose>0 0 0.06 0 0 0</pose>
+        <axis>
+          <xyz>0 0 1</xyz>
+          <limit><lower>-1e16</lower><upper>1e16</upper></limit>
+        </axis>
+      </joint>
+
+      <!-- Tubing from pump to robot needle area -->
+      <link name="pump_tubing">
+        <visual name="tube">
+          <pose>-0.15 0 0.02 0 0 0.3</pose>
+          <geometry><cylinder><radius>0.003</radius><length>0.35</length></cylinder></geometry>
+          <material>
+            <ambient>0.1 0.1 0.15 1</ambient>
+            <diffuse>0.15 0.15 0.2 0.8</diffuse>
+          </material>
+        </visual>
+      </link>
+      <joint name="tubing_joint" type="fixed">
+        <parent>pump_base</parent>
+        <child>pump_tubing</child>
+      </joint>
+
+      <!-- Gazebo plugin for pump simulation -->
+      <plugin name="pump_controller" filename="libelectrospin_pump_plugin.so">
+        <flow_rate_topic>/pump/flow_rate</flow_rate_topic>
+        <pressure_topic>/pump/pressure</pressure_topic>
+        <command_topic>/pump/start</command_topic>
+        <roller_joint>pump_roller_joint</roller_joint>
+        <max_flow_ml_hr>10.0</max_flow_ml_hr>
+        <max_rpm>60.0</max_rpm>
+      </plugin>
+    </model>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         DIGITAL TWIN: Collector Drum with Motor
+         Rotating cylinder with motor dynamics.
+         Publishes: /collector/rpm, /collector/start, /collector/state
+    ═══════════════════════════════════════════════════════════════════════ -->
+    <model name="collector_drum">
+      <pose>-0.25 0.0 0.46 0 0 0</pose>
+      <link name="collector_base_link">
+        <inertial>
+          <mass>3.0</mass>
+          <inertia>
+            <ixx>0.02</ixx><ixy>0</ixy><ixz>0</ixz>
+            <iyy>0.02</iyy><iyz>0</iyz><izz>0.01</izz>
+          </inertia>
+        </inertial>
+        <collision name="base_collision">
+          <geometry><box><size>0.12 0.08 0.03</size></box></geometry>
+        </collision>
+        <visual name="base">
+          <geometry><box><size>0.12 0.08 0.03</size></box></geometry>
+          <material>
+            <ambient>0.2 0.2 0.2 1</ambient>
+            <diffuse>0.25 0.25 0.25 1</diffuse>
+          </material>
+        </visual>
+        <!-- Motor housing -->
+        <visual name="motor_housing">
+          <pose>0 0 0.025 0 0 0</pose>
+          <geometry><cylinder><radius>0.025</radius><length>0.02</length></cylinder></geometry>
+          <material>
+            <ambient>0.15 0.15 0.2 1</ambient>
+            <diffuse>0.2 0.2 0.25 1</diffuse>
+          </material>
+        </visual>
+      </link>
+
+      <!-- Rotating drum -->
+      <link name="drum_link">
+        <pose>0 0 0.035 0 0 0</pose>
+        <inertial>
+          <mass>0.8</mass>
+          <inertia>
+            <ixx>0.003</ixx><ixy>0</ixy><ixz>0</ixz>
+            <iyy>0.003</iyy><iyz>0</iyz><izz>0.0015</izz>
+          </inertia>
+        </inertial>
+        <collision name="drum_collision">
+          <geometry><cylinder><radius>0.04</radius><length>0.06</length></cylinder></geometry>
+        </collision>
+        <visual name="drum">
+          <geometry><cylinder><radius>0.04</radius><length>0.06</length></cylinder></geometry>
+          <material>
+            <ambient>0.35 0.35 0.4 1</ambient>
+            <diffuse>0.4 0.4 0.45 1</diffuse>
+            <specular>0.6 0.6 0.6 1</specular>
+          </material>
+        </visual>
+        <!-- Drum surface markings (rotation indicator) -->
+        <visual name="mark1">
+          <pose>0.04 0 0 0 0 0</pose>
+          <geometry><box><size>0.001 0.002 0.06</size></box></geometry>
+          <material><ambient>0.1 0.1 0.1 1</ambient><diffuse>0.15 0.15 0.15 1</diffuse></material>
+        </visual>
+        <visual name="mark2">
+          <pose>-0.04 0 0 0 0 0</pose>
+          <geometry><box><size>0.001 0.002 0.06</size></box></geometry>
+          <material><ambient>0.1 0.1 0.1 1</ambient><diffuse>0.15 0.15 0.15 1</diffuse></material>
+        </visual>
+      </link>
+
+      <joint name="drum_rotation_joint" type="revolute">
+        <parent>collector_base_link</parent>
+        <child>drum_link</child>
+        <pose>0 0 0.035 0 0 0</pose>
+        <axis>
+          <xyz>0 0 1</xyz>
+          <limit><lower>-1e16</lower><upper>1e16</upper></limit>
+        </axis>
+        <physics>
+          <ode>
+            <cfm_damping>1.0</cfm_damping>
+            <fudge_factor>0.5</fudge_factor>
+          </ode>
+        </physics>
+      </joint>
+
+      <!-- Gazebo plugin for collector motor simulation -->
+      <plugin name="collector_motor" filename="libelectrospin_collector_plugin.so">
+        <rpm_topic>/collector/rpm</rpm_topic>
+        <command_topic>/collector/start</command_topic>
+        <state_topic>/collector/state</state_topic>
+        <drum_joint>drum_rotation_joint</drum_joint>
+        <max_rpm>3000.0</max_rpm>
+        <motor_inertia>0.15</motor_inertia>
+      </plugin>
+    </model>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         DIGITAL TWIN: High Voltage Power Supply
+         With voltage control, status LED, and cable to needle.
+         Publishes: /hv/voltage, /hv/enable, /hv/status
+    ═══════════════════════════════════════════════════════════════════════ -->
+    <model name="hv_power_supply">
+      <pose>-0.45 0.25 0.46 0 0 0</pose>
+      <static>true</static>
+      <link name="hv_base">
+        <collision name="body_collision">
+          <geometry><box><size>0.18 0.28 0.14</size></box></geometry>
+        </collision>
+        <visual name="body">
+          <geometry><box><size>0.18 0.28 0.14</size></box></geometry>
           <material>
             <ambient>0.1 0.1 0.15 1</ambient>
             <diffuse>0.15 0.15 0.2 1</diffuse>
           </material>
         </visual>
+        <!-- Front panel -->
+        <visual name="panel">
+          <pose>0.091 0 0 0 1.5708 0</pose>
+          <geometry><box><size>0.24 0.001 0.12</size></box></geometry>
+          <material>
+            <ambient>0.05 0.05 0.08 1</ambient>
+            <diffuse>0.08 0.08 0.12 1</diffuse>
+          </material>
+        </visual>
+        <!-- Voltage display -->
+        <visual name="voltage_display">
+          <pose>0.092 0.05 0.02 0 1.5708 0</pose>
+          <geometry><box><size>0.06 0.001 0.03</size></box></geometry>
+          <material>
+            <ambient>0.0 0.1 0.0 1</ambient>
+            <diffuse>0.0 0.15 0.0 1</diffuse>
+            <emissive>0.0 0.25 0.0 1</emissive>
+          </material>
+        </visual>
+        <!-- Status LED (off = red, on = green) -->
+        <visual name="status_led">
+          <pose>0.092 -0.08 0.04 0 1.5708 0</pose>
+          <geometry><sphere><radius>0.005</radius></sphere></geometry>
+          <material>
+            <ambient>0.5 0.0 0.0 1</ambient>
+            <diffuse>0.8 0.0 0.0 1</diffuse>
+            <emissive>0.3 0.0 0.0 1</emissive>
+          </material>
+        </visual>
+        <!-- HV cable to needle -->
+        <visual name="hv_cable">
+          <pose>0.05 -0.1 0.07 0.3 0 0.5</pose>
+          <geometry><cylinder><radius>0.004</radius><length>0.5</length></cylinder></geometry>
+          <material>
+            <ambient>0.15 0.15 0.0 1</ambient>
+            <diffuse>0.2 0.2 0.0 1</diffuse>
+          </material>
+        </visual>
       </link>
+
+      <plugin name="hv_controller" filename="libelectrospin_hv_plugin.so">
+        <voltage_topic>/hv/voltage</voltage_topic>
+        <enable_topic>/hv/enable</enable_topic>
+        <status_topic>/hv/status</status_topic>
+        <max_voltage_kv>30.0</max_voltage_kv>
+      </plugin>
     </model>
 
-    <!-- Syringe pump (visual only) -->
-    <model name="syringe_pump">
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         DIGITAL TWIN: Environmental Sensors
+         Temperature + Humidity sensor module on the workbench.
+         Publishes: /env/temperature, /env/humidity
+    ═══════════════════════════════════════════════════════════════════════ -->
+    <model name="env_sensor">
+      <pose>0.5 -0.3 0.44 0 0 0</pose>
       <static>true</static>
-      <pose>0.4 0.3 0.44 0 0 0</pose>
-      <link name="link">
+      <link name="sensor_base">
         <visual name="body">
-          <geometry>
-            <box>
-              <size>0.1 0.2 0.08</size>
-            </box>
-          </geometry>
+          <geometry><box><size>0.04 0.025 0.015</size></box></geometry>
           <material>
-            <ambient>0.2 0.2 0.2 1</ambient>
-            <diffuse>0.25 0.25 0.25 1</diffuse>
+            <ambient>0.15 0.15 0.2 1</ambient>
+            <diffuse>0.2 0.2 0.25 1</diffuse>
+          </material>
+        </visual>
+        <!-- Sensor probe -->
+        <visual name="probe">
+          <pose>0 0 0.012 0 0 0</pose>
+          <geometry><cylinder><radius>0.004</radius><length>0.01</length></cylinder></geometry>
+          <material>
+            <ambient>0.4 0.4 0.4 1</ambient>
+            <diffuse>0.5 0.5 0.5 1</diffuse>
+          </material>
+        </visual>
+      </link>
+
+      <plugin name="env_sensor_plugin" filename="libelectrospin_env_sensor_plugin.so">
+        <temperature_topic>/env/temperature</temperature_topic>
+        <humidity_topic>/env/humidity</humidity_topic>
+        <base_temperature>22.0</base_temperature>
+        <base_humidity>45.0</base_humidity>
+      </plugin>
+    </model>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         DIGITAL TWIN: Fiber Deposition Visual
+         Simulates nanofiber deposition on collector surface.
+         Updates based on collector RPM and needle position.
+    ═══════════════════════════════════════════════════════════════════════ -->
+    <model name="fiber_deposition">
+      <pose>-0.25 0.0 0.50 0 0 0</pose>
+      <static>true</static>
+      <link name="deposition_layer">
+        <visual name="fibers">
+          <geometry><cylinder><radius>0.038</radius><length>0.001</length></cylinder></geometry>
+          <material>
+            <ambient>0.9 0.9 0.95 0.3</ambient>
+            <diffuse>0.95 0.95 1.0 0.4</diffuse>
+          </material>
+        </visual>
+      </link>
+
+      <plugin name="deposition_plugin" filename="libelectrospin_deposition_plugin.so">
+        <deposition_topic>/fiber_deposition</deposition_topic>
+        <collector_rpm_topic>/collector/rpm</collector_rpm_topic>
+        <flow_rate_topic>/pump/flow_rate</flow_rate_topic>
+      </plugin>
+    </model>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         Syringe on pump (visual)
+    ═══════════════════════════════════════════════════════════════════════ -->
+    <model name="syringe">
+      <pose>0.35 0.25 0.56 0 0 0</pose>
+      <static>true</static>
+      <link name="syringe_body">
+        <!-- Barrel -->
+        <visual name="barrel">
+          <geometry><cylinder><radius>0.012</radius><length>0.08</length></cylinder></geometry>
+          <material>
+            <ambient>0.7 0.7 0.75 0.8</ambient>
+            <diffuse>0.8 0.8 0.85 0.8</diffuse>
+          </material>
+        </visual>
+        <!-- Plunger -->
+        <visual name="plunger">
+          <pose>0 0 0.05 0 0 0</pose>
+          <geometry><cylinder><radius>0.01</radius><length>0.03</length></cylinder></geometry>
+          <material>
+            <ambient>0.3 0.3 0.3 1</ambient>
+            <diffuse>0.4 0.4 0.4 1</diffuse>
+          </material>
+        </visual>
+        <!-- Needle tip -->
+        <visual name="needle">
+          <pose>0 0 -0.05 0 0 0</pose>
+          <geometry><cylinder><radius>0.002</radius><length>0.02</length></cylinder></geometry>
+          <material>
+            <ambient>0.6 0.6 0.65 1</ambient>
+            <diffuse>0.7 0.7 0.75 1</diffuse>
           </material>
         </visual>
       </link>

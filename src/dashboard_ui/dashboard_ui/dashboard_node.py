@@ -553,6 +553,7 @@ class DashboardNode(Node):
     gesture_updated = pyqtSignal(dict)
     image_updated = pyqtSignal(object)
     joint_updated = pyqtSignal(list)
+    digital_twin_updated = pyqtSignal(dict)
 
     def __init__(self):
         super().__init__("dashboard")
@@ -611,6 +612,35 @@ class DashboardNode(Node):
         self.sub_motion = self.create_subscription(
             MotionCommand, "/motion_command", self._on_motion, reliable_qos
         )
+
+        # Subscribers — digital twin
+        self.sub_hv_status = self.create_subscription(
+            String, "/hv/status", self._on_hv_status, reliable_qos
+        )
+        self.sub_env_temp = self.create_subscription(
+            Float32, "/env/temperature", self._on_env_temp, reliable_qos
+        )
+        self.sub_env_humidity = self.create_subscription(
+            Float32, "/env/humidity", self._on_env_humidity, reliable_qos
+        )
+        self.sub_deposition = self.create_subscription(
+            String, "/fiber_deposition", self._on_deposition, reliable_qos
+        )
+        self.sub_pump_twin = self.create_subscription(
+            String, "/pump/status", self._on_pump_twin, reliable_qos
+        )
+        self.sub_collector_twin = self.create_subscription(
+            String, "/collector/state", self._on_collector_twin, reliable_qos
+        )
+
+        # Digital twin state cache
+        self._dt_state = {
+            "hv_voltage_kv": 0.0, "hv_enabled": False, "hv_current_ua": 0.0,
+            "env_temp": 22.0, "env_humidity": 45.0,
+            "dep_coverage": 0.0, "dep_total_mg": 0.0,
+            "pump_roller_rpm": 0.0,
+            "collector_vibration": 0.0, "collector_temp": 25.0,
+        }
 
         self._bridge = CvBridge() if CV_AVAILABLE else None
 
@@ -715,6 +745,50 @@ class DashboardNode(Node):
             "source": msg.source,
             "latency_ms": msg.latency_ms,
         })
+
+    def _on_hv_status(self, msg: String):
+        try:
+            data = json.loads(msg.data)
+            self._dt_state["hv_voltage_kv"] = data.get("voltage_kv", 0)
+            self._dt_state["hv_enabled"] = data.get("enabled", False)
+            self._dt_state["hv_current_ua"] = data.get("current_ua", 0)
+            self.digital_twin_updated.emit(dict(self._dt_state))
+        except json.JSONDecodeError:
+            pass
+
+    def _on_env_temp(self, msg: Float32):
+        self._dt_state["env_temp"] = msg.data
+        self.digital_twin_updated.emit(dict(self._dt_state))
+
+    def _on_env_humidity(self, msg: Float32):
+        self._dt_state["env_humidity"] = msg.data
+        self.digital_twin_updated.emit(dict(self._dt_state))
+
+    def _on_deposition(self, msg: String):
+        try:
+            data = json.loads(msg.data)
+            self._dt_state["dep_coverage"] = data.get("coverage_mean", 0)
+            self._dt_state["dep_total_mg"] = data.get("total_mg", 0)
+            self.digital_twin_updated.emit(dict(self._dt_state))
+        except json.JSONDecodeError:
+            pass
+
+    def _on_pump_twin(self, msg: String):
+        try:
+            data = json.loads(msg.data)
+            self._dt_state["pump_roller_rpm"] = data.get("roller_rpm", 0)
+            self.digital_twin_updated.emit(dict(self._dt_state))
+        except json.JSONDecodeError:
+            pass
+
+    def _on_collector_twin(self, msg: String):
+        try:
+            data = json.loads(msg.data)
+            self._dt_state["collector_vibration"] = data.get("vibration", 0)
+            self._dt_state["collector_temp"] = data.get("temperature_c", 25)
+            self.digital_twin_updated.emit(dict(self._dt_state))
+        except json.JSONDecodeError:
+            pass
 
     def publish_target_rpm(self, rpm: float):
         msg = Float32()
@@ -1060,6 +1134,24 @@ class DashboardWindow(QMainWindow):
         diag_layout.addWidget(self.diag_label)
         right_panel.addWidget(diag_group)
 
+        # Digital Twin
+        dt_group = QGroupBox("Digital Twin")
+        dt_layout = QVBoxLayout(dt_group)
+        self.dt_hv_label = QLabel("HV: OFF  0.00 kV")
+        self.dt_hv_current_label = QLabel("HV Current: 0.0 uA")
+        self.dt_temp_label = QLabel("Temp: 22.0 C")
+        self.dt_humidity_label = QLabel("Humidity: 45.0 %")
+        self.dt_deposition_label = QLabel("Deposition: 0.0%  0.0 mg")
+        self.dt_roller_label = QLabel("Pump Roller: 0.0 RPM")
+        self.dt_vibration_label = QLabel("Vibration: 0.00")
+        self.dt_collector_temp_label = QLabel("Motor Temp: 25.0 C")
+        for lbl in [self.dt_hv_label, self.dt_hv_current_label,
+                    self.dt_temp_label, self.dt_humidity_label,
+                    self.dt_deposition_label, self.dt_roller_label,
+                    self.dt_vibration_label, self.dt_collector_temp_label]:
+            dt_layout.addWidget(lbl)
+        right_panel.addWidget(dt_group)
+
         right_panel.addStretch()
         main_layout.addLayout(right_panel, stretch=2)
 
@@ -1081,6 +1173,7 @@ class DashboardWindow(QMainWindow):
         self.ros.motion_updated.connect(self._update_motion)
         self.ros.image_updated.connect(self._update_image)
         self.ros.joint_updated.connect(self._update_joints)
+        self.ros.digital_twin_updated.connect(self._update_digital_twin)
 
     # ── Slot handlers ────────────────────────────────────────────────────────
 
@@ -1208,6 +1301,31 @@ class DashboardWindow(QMainWindow):
     def _update_joints(self, angles: list):
         if angles:
             self.robot_arm.set_angles(angles)
+
+    def _update_digital_twin(self, data: dict):
+        hv_v = data.get("hv_voltage_kv", 0)
+        hv_on = data.get("hv_enabled", False)
+        hv_i = data.get("hv_current_ua", 0)
+        self.dt_hv_label.setText(f"HV: {'ON' if hv_on else 'OFF'}  {hv_v:.2f} kV")
+        self.dt_hv_label.setStyleSheet(
+            f"color: {Colors.ACCENT_YELLOW if hv_on else Colors.TEXT_SECONDARY}; font-weight: bold;"
+        )
+        self.dt_hv_current_label.setText(f"HV Current: {hv_i:.1f} uA")
+        temp = data.get("env_temp", 22.0)
+        humid = data.get("env_humidity", 45.0)
+        self.dt_temp_label.setText(f"Temp: {temp:.1f} C")
+        self.dt_humidity_label.setText(f"Humidity: {humid:.1f} %")
+        dep_cov = data.get("dep_coverage", 0)
+        dep_mg = data.get("dep_total_mg", 0)
+        self.dt_deposition_label.setText(f"Deposition: {dep_cov*100:.1f}%  {dep_mg:.1f} mg")
+        roller = data.get("pump_roller_rpm", 0)
+        self.dt_roller_label.setText(f"Pump Roller: {roller:.1f} RPM")
+        vib = data.get("collector_vibration", 0)
+        ct = data.get("collector_temp", 25.0)
+        vib_color = Colors.SUCCESS if vib < 0.3 else (Colors.WARNING if vib < 0.6 else Colors.ERROR)
+        self.dt_vibration_label.setText(f"Vibration: {vib:.3f}")
+        self.dt_vibration_label.setStyleSheet(f"color: {vib_color};")
+        self.dt_collector_temp_label.setText(f"Motor Temp: {ct:.1f} C")
 
     # ── Control handlers ─────────────────────────────────────────────────────
 

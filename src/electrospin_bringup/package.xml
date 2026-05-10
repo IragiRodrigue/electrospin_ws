@@ -20,6 +20,7 @@
   <exec_depend>simulation_system</exec_depend>
   <exec_depend>human_tracking</exec_depend>
   <exec_depend>motion_mapping</exec_depend>
+  <exec_depend>digital_twin</exec_depend>
 
   <export>
     <build_type>ament_python</build_type>

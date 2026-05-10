@@ -1,0 +1,4 @@
+digital_twin_bridge:
+  ros__parameters:
+    simulation_mode: true
+    update_rate_hz: 50.0

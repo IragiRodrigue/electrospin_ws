@@ -235,6 +235,23 @@ def generate_launch_description():
     )
 
     # ─────────────────────────────────────────────────────────────────────────
+    # Digital Twin Bridge (physics simulation for pump, collector, HV, sensors)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    digital_twin_node = Node(
+        package="digital_twin",
+        executable="digital_twin_bridge",
+        name="digital_twin_bridge",
+        namespace=ns,
+        parameters=[
+            {"simulation_mode": sim_mode},
+            {"update_rate_hz": 50.0},
+        ],
+        output="screen",
+        condition=IfCondition(sim_mode),
+    )
+
+    # ─────────────────────────────────────────────────────────────────────────
     # Launch Description Assembly
     # ─────────────────────────────────────────────────────────────────────────
 
@@ -264,4 +281,6 @@ def generate_launch_description():
         system_monitor_node,
         # Command bridge
         command_bridge_node,
+        # Digital twin (simulation only)
+        digital_twin_node,
     ])
