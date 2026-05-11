@@ -147,8 +147,11 @@ class MotorDriverHAL:
         """Read current RPM from encoder / estimator."""
         if self.sim:
             with self._sim_lock:
-                # Noise proportional to RPM (1% at high RPM, less at low)
-                noise_std = max(0.5, self._sim_rpm * 0.01)
+                # Only add noise when motor is spinning (>5 RPM)
+                if self._sim_rpm < 5.0:
+                    return 0.0
+                # Noise proportional to RPM (1% at high RPM)
+                noise_std = self._sim_rpm * 0.01
                 noise = np.random.normal(0, noise_std)
                 return max(0.0, self._sim_rpm + noise)
         else:
