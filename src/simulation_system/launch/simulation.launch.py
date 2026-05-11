@@ -44,14 +44,16 @@ def generate_launch_description():
             output='screen',
         ),
 
-        # Joint State Publisher (for simulation)
-        Node(
-            package='joint_state_publisher_gui',
-            executable='joint_state_publisher_gui',
-            name='joint_state_publisher_gui',
-            output='screen',
-            condition=IfCondition(LaunchConfiguration('gui')),
-        ),
+        # Joint State Publisher (for simulation) — DISABLED in favor of robot_controller publishing
+        # This was causing continuous random joint movements. The robot_controller now publishes
+        # actual joint states based on simulation commands.
+        # Node(
+        #     package='joint_state_publisher_gui',
+        #     executable='joint_state_publisher_gui',
+        #     name='joint_state_publisher_gui',
+        #     output='screen',
+        #     condition=IfCondition(LaunchConfiguration('gui')),
+        # ),
 
         # Gazebo server
         IncludeLaunchDescription(

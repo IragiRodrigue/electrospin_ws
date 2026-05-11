@@ -1,315 +1,313 @@
-<?xml version="1.0"?>
-<robot name="mycobot_280" xmlns:xacro="http://www.ros.org/wiki/xacro">
+<?xml version='1.0' encoding='utf-8'?>
+<robot name="mycobot_280">
 
-  <!-- MyCobot 280 URDF for ElectroSpin Platform
-       Simplified model for Gazebo simulation and RViz visualization.
-       Includes: 6-DOF arm + electrospinning needle end-effector + collector drum
-  -->
+  
 
-  <!-- Materials -->
+  
   <material name="dark_gray">
-    <color rgba="0.2 0.2 0.2 1.0"/>
+    <color rgba="0.2 0.2 0.2 1.0" />
   </material>
   <material name="light_gray">
-    <color rgba="0.6 0.6 0.6 1.0"/>
+    <color rgba="0.6 0.6 0.6 1.0" />
   </material>
   <material name="blue_accent">
-    <color rgba="0.34 0.65 1.0 1.0"/>
+    <color rgba="0.34 0.65 1.0 1.0" />
   </material>
   <material name="collector_color">
-    <color rgba="0.4 0.4 0.5 1.0"/>
+    <color rgba="0.4 0.4 0.5 1.0" />
   </material>
   <material name="needle_color">
-    <color rgba="0.8 0.8 0.85 1.0"/>
+    <color rgba="0.8 0.8 0.85 1.0" />
   </material>
 
-  <!-- Base Link -->
+  
   <link name="base_link">
     <visual>
       <geometry>
-        <cylinder radius="0.05" length="0.04"/>
+        <cylinder radius="0.05" length="0.04" />
       </geometry>
-      <material name="dark_gray"/>
+      <material name="dark_gray" />
     </visual>
     <collision>
       <geometry>
-        <cylinder radius="0.05" length="0.04"/>
+        <cylinder radius="0.05" length="0.04" />
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.5"/>
-      <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+      <mass value="0.5" />
+      <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001" />
     </inertial>
   </link>
 
-  <!-- Joint 1 (Base rotation) -->
+  
   <joint name="joint1_link" type="revolute">
-    <parent link="base_link"/>
-    <child link="link1"/>
-    <origin xyz="0 0 0.02" rpy="0 0 0"/>
-    <axis xyz="0 0 1"/>
-    <limit lower="-2.88" upper="2.88" effort="10.0" velocity="3.14"/>
+    <parent link="base_link" />
+    <child link="link1" />
+    <origin xyz="0 0 0.02" rpy="0 0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-2.88" upper="2.88" effort="10.0" velocity="3.14" />
+    <dynamics damping="0.1" friction="0.05" />
   </joint>
 
   <link name="link1">
     <visual>
       <geometry>
-        <cylinder radius="0.035" length="0.072"/>
+        <cylinder radius="0.035" length="0.072" />
       </geometry>
-      <origin xyz="0 0 0.036" rpy="0 0 0"/>
-      <material name="light_gray"/>
+      <origin xyz="0 0 0.036" rpy="0 0 0" />
+      <material name="light_gray" />
     </visual>
     <collision>
       <geometry>
-        <cylinder radius="0.035" length="0.072"/>
+        <cylinder radius="0.035" length="0.072" />
       </geometry>
-      <origin xyz="0 0 0.036" rpy="0 0 0"/>
+      <origin xyz="0 0 0.036" rpy="0 0 0" />
     </collision>
     <inertial>
-      <mass value="0.2"/>
-      <inertia ixx="0.0003" ixy="0" ixz="0" iyy="0.0003" iyz="0" izz="0.0001"/>
+      <mass value="0.2" />
+      <inertia ixx="0.0003" ixy="0" ixz="0" iyy="0.0003" iyz="0" izz="0.0001" />
     </inertial>
   </link>
 
-  <!-- Joint 2 (Shoulder) -->
+  
   <joint name="joint2_link" type="revolute">
-    <parent link="link1"/>
-    <child link="link2"/>
-    <origin xyz="0 0 0.072" rpy="0 0 0"/>
-    <axis xyz="0 1 0"/>
-    <limit lower="-2.88" upper="2.88" effort="10.0" velocity="3.14"/>
-  </joint>
+    <parent link="link1" />
+    <child link="link2" />
+    <origin xyz="0 0 0.072" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="-2.88" upper="2.88" effort="10.0" velocity="3.14" />
+  <dynamics damping="0.1" friction="0.05" /></joint>
 
   <link name="link2">
     <visual>
       <geometry>
-        <cylinder radius="0.03" length="0.11"/>
+        <cylinder radius="0.03" length="0.11" />
       </geometry>
-      <origin xyz="0 0 0.055" rpy="0 0 0"/>
-      <material name="blue_accent"/>
+      <origin xyz="0 0 0.055" rpy="0 0 0" />
+      <material name="blue_accent" />
     </visual>
     <collision>
       <geometry>
-        <cylinder radius="0.03" length="0.11"/>
+        <cylinder radius="0.03" length="0.11" />
       </geometry>
-      <origin xyz="0 0 0.055" rpy="0 0 0"/>
+      <origin xyz="0 0 0.055" rpy="0 0 0" />
     </collision>
     <inertial>
-      <mass value="0.15"/>
-      <inertia ixx="0.0003" ixy="0" ixz="0" iyy="0.0003" iyz="0" izz="0.0001"/>
+      <mass value="0.15" />
+      <inertia ixx="0.0003" ixy="0" ixz="0" iyy="0.0003" iyz="0" izz="0.0001" />
     </inertial>
   </link>
 
-  <!-- Joint 3 (Elbow) -->
+  
   <joint name="joint3_link" type="revolute">
-    <parent link="link2"/>
-    <child link="link3"/>
-    <origin xyz="0 0 0.11" rpy="0 0 0"/>
-    <axis xyz="0 1 0"/>
-    <limit lower="-2.88" upper="2.88" effort="10.0" velocity="3.14"/>
-  </joint>
+    <parent link="link2" />
+    <child link="link3" />
+    <origin xyz="0 0 0.11" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="-2.88" upper="2.88" effort="10.0" velocity="3.14" />
+  <dynamics damping="0.1" friction="0.05" /></joint>
 
   <link name="link3">
     <visual>
       <geometry>
-        <cylinder radius="0.028" length="0.11"/>
+        <cylinder radius="0.028" length="0.11" />
       </geometry>
-      <origin xyz="0 0 0.055" rpy="0 0 0"/>
-      <material name="light_gray"/>
+      <origin xyz="0 0 0.055" rpy="0 0 0" />
+      <material name="light_gray" />
     </visual>
     <collision>
       <geometry>
-        <cylinder radius="0.028" length="0.11"/>
+        <cylinder radius="0.028" length="0.11" />
       </geometry>
-      <origin xyz="0 0 0.055" rpy="0 0 0"/>
+      <origin xyz="0 0 0.055" rpy="0 0 0" />
     </collision>
     <inertial>
-      <mass value="0.12"/>
-      <inertia ixx="0.0002" ixy="0" ixz="0" iyy="0.0002" iyz="0" izz="0.0001"/>
+      <mass value="0.12" />
+      <inertia ixx="0.0002" ixy="0" ixz="0" iyy="0.0002" iyz="0" izz="0.0001" />
     </inertial>
   </link>
 
-  <!-- Joint 4 (Wrist 1) -->
+  
   <joint name="joint4_link" type="revolute">
-    <parent link="link3"/>
-    <child link="link4"/>
-    <origin xyz="0 0 0.11" rpy="0 0 0"/>
-    <axis xyz="0 1 0"/>
-    <limit lower="-2.88" upper="2.88" effort="5.0" velocity="3.14"/>
-  </joint>
+    <parent link="link3" />
+    <child link="link4" />
+    <origin xyz="0 0 0.11" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="-2.88" upper="2.88" effort="5.0" velocity="3.14" />
+  <dynamics damping="0.1" friction="0.05" /></joint>
 
   <link name="link4">
     <visual>
       <geometry>
-        <cylinder radius="0.025" length="0.075"/>
+        <cylinder radius="0.025" length="0.075" />
       </geometry>
-      <origin xyz="0 0 0.0375" rpy="0 0 0"/>
-      <material name="blue_accent"/>
+      <origin xyz="0 0 0.0375" rpy="0 0 0" />
+      <material name="blue_accent" />
     </visual>
     <collision>
       <geometry>
-        <cylinder radius="0.025" length="0.075"/>
+        <cylinder radius="0.025" length="0.075" />
       </geometry>
-      <origin xyz="0 0 0.0375" rpy="0 0 0"/>
+      <origin xyz="0 0 0.0375" rpy="0 0 0" />
     </collision>
     <inertial>
-      <mass value="0.08"/>
-      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.00005"/>
+      <mass value="0.08" />
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.00005" />
     </inertial>
   </link>
 
-  <!-- Joint 5 (Wrist 2) -->
+  
   <joint name="joint5_link" type="revolute">
-    <parent link="link4"/>
-    <child link="link5"/>
-    <origin xyz="0 0 0.075" rpy="0 0 0"/>
-    <axis xyz="0 0 1"/>
-    <limit lower="-3.05" upper="3.05" effort="5.0" velocity="3.14"/>
-  </joint>
+    <parent link="link4" />
+    <child link="link5" />
+    <origin xyz="0 0 0.075" rpy="0 0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.05" upper="3.05" effort="5.0" velocity="3.14" />
+  <dynamics damping="0.1" friction="0.05" /></joint>
 
   <link name="link5">
     <visual>
       <geometry>
-        <cylinder radius="0.022" length="0.055"/>
+        <cylinder radius="0.022" length="0.055" />
       </geometry>
-      <origin xyz="0 0 0.0275" rpy="0 0 0"/>
-      <material name="light_gray"/>
+      <origin xyz="0 0 0.0275" rpy="0 0 0" />
+      <material name="light_gray" />
     </visual>
     <collision>
       <geometry>
-        <cylinder radius="0.022" length="0.055"/>
+        <cylinder radius="0.022" length="0.055" />
       </geometry>
-      <origin xyz="0 0 0.0275" rpy="0 0 0"/>
+      <origin xyz="0 0 0.0275" rpy="0 0 0" />
     </collision>
     <inertial>
-      <mass value="0.06"/>
-      <inertia ixx="0.00005" ixy="0" ixz="0" iyy="0.00005" iyz="0" izz="0.00003"/>
+      <mass value="0.06" />
+      <inertia ixx="0.00005" ixy="0" ixz="0" iyy="0.00005" iyz="0" izz="0.00003" />
     </inertial>
   </link>
 
-  <!-- Joint 6 (Wrist 3 / Flange) -->
+  
   <joint name="joint6_link" type="revolute">
-    <parent link="link5"/>
-    <child link="link6"/>
-    <origin xyz="0 0 0.055" rpy="0 0 0"/>
-    <axis xyz="0 1 0"/>
-    <limit lower="-3.05" upper="3.05" effort="3.0" velocity="3.14"/>
-  </joint>
+    <parent link="link5" />
+    <child link="link6" />
+    <origin xyz="0 0 0.055" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="-3.05" upper="3.05" effort="3.0" velocity="3.14" />
+  <dynamics damping="0.1" friction="0.05" /></joint>
 
   <link name="link6">
     <visual>
       <geometry>
-        <cylinder radius="0.02" length="0.03"/>
+        <cylinder radius="0.02" length="0.03" />
       </geometry>
-      <origin xyz="0 0 0.015" rpy="0 0 0"/>
-      <material name="dark_gray"/>
+      <origin xyz="0 0 0.015" rpy="0 0 0" />
+      <material name="dark_gray" />
     </visual>
     <collision>
       <geometry>
-        <cylinder radius="0.02" length="0.03"/>
+        <cylinder radius="0.02" length="0.03" />
       </geometry>
-      <origin xyz="0 0 0.015" rpy="0 0 0"/>
+      <origin xyz="0 0 0.015" rpy="0 0 0" />
     </collision>
     <inertial>
-      <mass value="0.04"/>
-      <inertia ixx="0.00002" ixy="0" ixz="0" iyy="0.00002" iyz="0" izz="0.00001"/>
+      <mass value="0.04" />
+      <inertia ixx="0.00002" ixy="0" ixz="0" iyy="0.00002" iyz="0" izz="0.00001" />
     </inertial>
   </link>
 
-  <!-- Electrospinning Needle End-Effector -->
+  
   <joint name="needle_joint" type="fixed">
-    <parent link="link6"/>
-    <child link="needle_link"/>
-    <origin xyz="0 0 0.03" rpy="0 0 0"/>
+    <parent link="link6" />
+    <child link="needle_link" />
+    <origin xyz="0 0 0.03" rpy="0 0 0" />
   </joint>
 
   <link name="needle_link">
     <visual>
       <geometry>
-        <cylinder radius="0.003" length="0.06"/>
+        <cylinder radius="0.003" length="0.06" />
       </geometry>
-      <origin xyz="0 0 0.03" rpy="0 0 0"/>
-      <material name="needle_color"/>
+      <origin xyz="0 0 0.03" rpy="0 0 0" />
+      <material name="needle_color" />
     </visual>
     <collision>
       <geometry>
-        <cylinder radius="0.003" length="0.06"/>
+        <cylinder radius="0.003" length="0.06" />
       </geometry>
-      <origin xyz="0 0 0.03" rpy="0 0 0"/>
+      <origin xyz="0 0 0.03" rpy="0 0 0" />
     </collision>
     <inertial>
-      <mass value="0.01"/>
-      <inertia ixx="0.000001" ixy="0" ixz="0" iyy="0.000001" iyz="0" izz="0.000001"/>
+      <mass value="0.01" />
+      <inertia ixx="0.000001" ixy="0" ixz="0" iyy="0.000001" iyz="0" izz="0.000001" />
     </inertial>
   </link>
 
-  <!-- Needle tip frame (for distance measurement) -->
+  
   <joint name="needle_tip_joint" type="fixed">
-    <parent link="needle_link"/>
-    <child link="needle_tip"/>
-    <origin xyz="0 0 0.06" rpy="0 0 0"/>
+    <parent link="needle_link" />
+    <child link="needle_tip" />
+    <origin xyz="0 0 0.06" rpy="0 0 0" />
   </joint>
 
   <link name="needle_tip">
     <inertial>
-      <mass value="0.001"/>
-      <inertia ixx="0.0000001" ixy="0" ixz="0" iyy="0.0000001" iyz="0" izz="0.0000001"/>
+      <mass value="0.001" />
+      <inertia ixx="0.0000001" ixy="0" ixz="0" iyy="0.0000001" iyz="0" izz="0.0000001" />
     </inertial>
   </link>
 
-  <!-- Collector Drum (attached to base_link via fixed joint) -->
+  
   <joint name="collector_base_joint" type="fixed">
-    <parent link="base_link"/>
-    <child link="collector_base"/>
-    <origin xyz="0.15 0 0.02" rpy="0 0 0"/>
+    <parent link="base_link" />
+    <child link="collector_base" />
+    <origin xyz="0.15 0 0.02" rpy="0 0 0" />
   </joint>
 
   <link name="collector_base">
     <visual>
       <geometry>
-        <box size="0.1 0.08 0.02"/>
+        <box size="0.1 0.08 0.02" />
       </geometry>
-      <material name="dark_gray"/>
+      <material name="dark_gray" />
     </visual>
     <collision>
       <geometry>
-        <box size="0.1 0.08 0.02"/>
+        <box size="0.1 0.08 0.02" />
       </geometry>
     </collision>
     <inertial>
-      <mass value="2.0"/>
-      <inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.005"/>
+      <mass value="2.0" />
+      <inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.005" />
     </inertial>
   </link>
 
   <joint name="collector_rotation_joint" type="continuous">
-    <parent link="collector_base"/>
-    <child link="collector_drum"/>
-    <origin xyz="0 0 0.01" rpy="0 0 0"/>
-    <axis xyz="0 0 1"/>
-  </joint>
+    <parent link="collector_base" />
+    <child link="collector_drum" />
+    <origin xyz="0 0 0.01" rpy="0 0 0" />
+    <axis xyz="0 0 1" />
+  <dynamics damping="0.1" friction="0.05" /></joint>
 
   <link name="collector_drum">
     <visual>
       <geometry>
-        <cylinder radius="0.04" length="0.06"/>
+        <cylinder radius="0.04" length="0.06" />
       </geometry>
-      <origin xyz="0 0 0.03" rpy="1.5708 0 0"/>
-      <material name="collector_color"/>
+      <origin xyz="0 0 0.03" rpy="1.5708 0 0" />
+      <material name="collector_color" />
     </visual>
     <collision>
       <geometry>
-        <cylinder radius="0.04" length="0.06"/>
+        <cylinder radius="0.04" length="0.06" />
       </geometry>
-      <origin xyz="0 0 0.03" rpy="1.5708 0 0"/>
+      <origin xyz="0 0 0.03" rpy="1.5708 0 0" />
     </collision>
     <inertial>
-      <mass value="0.5"/>
-      <inertia ixx="0.002" ixy="0" ixz="0" iyy="0.002" iyz="0" izz="0.001"/>
+      <mass value="0.5" />
+      <inertia ixx="0.002" ixy="0" ixz="0" iyy="0.002" iyz="0" izz="0.001" />
     </inertial>
   </link>
 
-  <!-- Gazebo plugins -->
+  
   <gazebo>
     <plugin name="gazebo_ros2_control" filename="libgazebo_ros2_control.so">
       <robot_param>robot_description</robot_param>
@@ -321,12 +319,12 @@
     <static>true</static>
   </gazebo>
 
-  <!-- Transmission for Gazebo control -->
+  
   <transmission name="joint1_trans">
     <type>transmission_interface/SimpleTransmission</type>
     <joint name="joint1_link">
       <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
-    </joint>
+    <dynamics damping="0.1" friction="0.05" /></joint>
     <actuator name="joint1_motor">
       <mechanicalReduction>1</mechanicalReduction>
     </actuator>
@@ -336,7 +334,7 @@
     <type>transmission_interface/SimpleTransmission</type>
     <joint name="joint2_link">
       <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
-    </joint>
+    <dynamics damping="0.1" friction="0.05" /></joint>
     <actuator name="joint2_motor">
       <mechanicalReduction>1</mechanicalReduction>
     </actuator>
@@ -346,7 +344,7 @@
     <type>transmission_interface/SimpleTransmission</type>
     <joint name="joint3_link">
       <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
-    </joint>
+    <dynamics damping="0.1" friction="0.05" /></joint>
     <actuator name="joint3_motor">
       <mechanicalReduction>1</mechanicalReduction>
     </actuator>
@@ -356,7 +354,7 @@
     <type>transmission_interface/SimpleTransmission</type>
     <joint name="joint4_link">
       <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
-    </joint>
+    <dynamics damping="0.1" friction="0.05" /></joint>
     <actuator name="joint4_motor">
       <mechanicalReduction>1</mechanicalReduction>
     </actuator>
@@ -366,7 +364,7 @@
     <type>transmission_interface/SimpleTransmission</type>
     <joint name="joint5_link">
       <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
-    </joint>
+    <dynamics damping="0.1" friction="0.05" /></joint>
     <actuator name="joint5_motor">
       <mechanicalReduction>1</mechanicalReduction>
     </actuator>
@@ -376,7 +374,7 @@
     <type>transmission_interface/SimpleTransmission</type>
     <joint name="joint6_link">
       <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
-    </joint>
+    <dynamics damping="0.1" friction="0.05" /></joint>
     <actuator name="joint6_motor">
       <mechanicalReduction>1</mechanicalReduction>
     </actuator>

@@ -209,7 +209,7 @@ def generate_launch_description():
 
     system_monitor_node = Node(
         package="electrospin_bringup",
-        executable="system_monitor",
+        executable="system_monitor_node",
         name="system_monitor",
         namespace=ns,
         parameters=[
@@ -225,7 +225,7 @@ def generate_launch_description():
 
     command_bridge_node = Node(
         package="electrospin_bringup",
-        executable="command_bridge",
+        executable="command_bridge_node",
         name="command_bridge",
         namespace=ns,
         parameters=[

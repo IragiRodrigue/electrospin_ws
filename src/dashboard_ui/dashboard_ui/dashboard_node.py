@@ -19,7 +19,22 @@ Real-time displays:
 Author: ElectroSpin Platform
 """
 
+# Fix Qt plugin conflict BEFORE importing anything from PyQt5
 import sys
+import os
+
+# Remove OpenCV's Qt plugin path completely
+sys.path = [p for p in sys.path if 'cv2' not in p or 'qt' not in p.lower()]
+if 'QT_QPA_PLATFORM_PLUGIN_PATH' in os.environ:
+    old_path = os.environ['QT_QPA_PLATFORM_PLUGIN_PATH']
+    os.environ['QT_QPA_PLATFORM_PLUGIN_PATH'] = ':'.join(
+        p for p in old_path.split(':') if 'cv2' not in p
+    )
+
+# Headless fallback
+if not os.environ.get('DISPLAY') and not os.environ.get('WAYLAND_DISPLAY'):
+    os.environ['QT_QPA_PLATFORM'] = 'offscreen'
+
 import json
 import math
 import time
@@ -1492,23 +1507,6 @@ class DashboardWindow(QMainWindow):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def main(args=None):
-    import os
-
-    # Fix Qt plugin conflict between OpenCV and PyQt5
-    # Remove OpenCV's Qt plugin path so PyQt5 uses its own
-    cv_plugin_path = os.path.join(
-        os.path.dirname(__file__), '..', '..', '..',
-        'cv2', 'qt', 'plugins'
-    )
-    current_plugin_path = os.environ.get('QT_QPA_PLATFORM_PLUGIN_PATH', '')
-    if cv_plugin_path in current_plugin_path:
-        paths = [p for p in current_plugin_path.split(os.pathsep) if cv_plugin_path not in p]
-        os.environ['QT_QPA_PLATFORM_PLUGIN_PATH'] = os.pathsep.join(paths)
-
-    # Allow headless mode with offscreen rendering
-    if not os.environ.get('DISPLAY') and not os.environ.get('WAYLAND_DISPLAY'):
-        os.environ['QT_QPA_PLATFORM'] = 'offscreen'
-
     rclpy.init(args=args)
     ros_node = DashboardNode()
 
