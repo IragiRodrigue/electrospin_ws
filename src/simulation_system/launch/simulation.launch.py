@@ -69,17 +69,13 @@ def generate_launch_description():
             }.items(),
         ),
 
-        # Gazebo client
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource([
-                os.path.join(
-                    get_package_share_directory('gazebo_ros'),
-                    'launch', 'gz_client.launch.py'
-                )
-            ]),
-            launch_arguments={
-                'world': world_file,
-            }.items(),
+        # Gazebo client (gzclient) — spawned directly
+        Node(
+            package='gazebo_ros',
+            executable='gzclient',
+            name='gzclient',
+            output='screen',
+            condition=IfCondition(LaunchConfiguration('gui')),
         ),
 
         # Spawn robot in Gazebo
