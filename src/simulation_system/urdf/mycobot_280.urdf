@@ -257,7 +257,13 @@
     </inertial>
   </link>
 
-  <!-- Collector Drum (separate from robot) -->
+  <!-- Collector Drum (attached to base_link via fixed joint) -->
+  <joint name="collector_base_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="collector_base"/>
+    <origin xyz="0.15 0 0.02" rpy="0 0 0"/>
+  </joint>
+
   <link name="collector_base">
     <visual>
       <geometry>

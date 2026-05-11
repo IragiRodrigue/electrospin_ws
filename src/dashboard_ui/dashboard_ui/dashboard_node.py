@@ -1492,6 +1492,23 @@ class DashboardWindow(QMainWindow):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def main(args=None):
+    import os
+
+    # Fix Qt plugin conflict between OpenCV and PyQt5
+    # Remove OpenCV's Qt plugin path so PyQt5 uses its own
+    cv_plugin_path = os.path.join(
+        os.path.dirname(__file__), '..', '..', '..',
+        'cv2', 'qt', 'plugins'
+    )
+    current_plugin_path = os.environ.get('QT_QPA_PLATFORM_PLUGIN_PATH', '')
+    if cv_plugin_path in current_plugin_path:
+        paths = [p for p in current_plugin_path.split(os.pathsep) if cv_plugin_path not in p]
+        os.environ['QT_QPA_PLATFORM_PLUGIN_PATH'] = os.pathsep.join(paths)
+
+    # Allow headless mode with offscreen rendering
+    if not os.environ.get('DISPLAY') and not os.environ.get('WAYLAND_DISPLAY'):
+        os.environ['QT_QPA_PLATFORM'] = 'offscreen'
+
     rclpy.init(args=args)
     ros_node = DashboardNode()
 
