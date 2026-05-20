@@ -13,6 +13,7 @@
   <depend>rviz2</depend>
 
   <exec_depend>joint_state_publisher_gui</exec_depend>
+  <exec_depend>mycobot_description</exec_depend>
   <exec_depend>xacro</exec_depend>
 
   <export>

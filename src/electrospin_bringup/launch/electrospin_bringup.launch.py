@@ -16,7 +16,7 @@ from launch.actions import (
     DeclareLaunchArgument, IncludeLaunchDescription,
     GroupAction, OpaqueFunction, LogInfo, TimerAction
 )
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, PythonExpression
 from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node, PushRosNamespace
@@ -37,6 +37,10 @@ def generate_launch_description():
             description="AI optimization mode: off|rule|adaptive|rl"
         ),
         DeclareLaunchArgument(
+            "process_capabilities", default_value="full_process",
+            description="Available real process actuators: robot_only, robot_plus_vision, or full_process"
+        ),
+        DeclareLaunchArgument(
             "serial_port", default_value="/dev/ttyUSB0",
             description="MyCobot serial port"
         ),
@@ -45,8 +49,52 @@ def generate_launch_description():
             description="Launch industrial dashboard UI"
         ),
         DeclareLaunchArgument(
+            "enable_presentation_game", default_value="false",
+            description="Launch Cham Cham Cham style hand-guided presentation demo"
+        ),
+        DeclareLaunchArgument(
+            "presentation_camera_index", default_value="0",
+            description="Camera index for human tracking during the presentation demo"
+        ),
+        DeclareLaunchArgument(
+            "presentation_tracked_hand", default_value="right",
+            description="Tracked hand for the demo: left or right"
+        ),
+        DeclareLaunchArgument(
+            "presentation_invert_direction", default_value="false",
+            description="Invert left/right mapping if the camera preview is mirrored"
+        ),
+        DeclareLaunchArgument(
+            "presentation_debug_visualization", default_value="true",
+            description="Show annotated tracking stream for the presentation demo"
+        ),
+        DeclareLaunchArgument(
             "enable_simulation_env", default_value="true",
             description="Launch Gazebo + RViz simulation environment"
+        ),
+        DeclareLaunchArgument(
+            "robot_model_variant", default_value="internal",
+            description="Robot model variant: internal, mycobot_280_jn, mycobot_280_riscv, mycobot_280_x3pi, mycobot_280_rdkx5, mycobot_280_arduino"
+        ),
+        DeclareLaunchArgument(
+            "collector_mode", default_value="active",
+            description="Collector mode: active or passive_fixed"
+        ),
+        DeclareLaunchArgument(
+            "spawn_x", default_value="auto",
+            description="Robot spawn X position in world coordinates, or auto"
+        ),
+        DeclareLaunchArgument(
+            "spawn_y", default_value="auto",
+            description="Robot spawn Y position in world coordinates, or auto"
+        ),
+        DeclareLaunchArgument(
+            "spawn_z", default_value="auto",
+            description="Robot spawn Z position in world coordinates, or auto"
+        ),
+        DeclareLaunchArgument(
+            "spawn_yaw", default_value="auto",
+            description="Robot spawn yaw in radians, or auto"
         ),
         DeclareLaunchArgument(
             "enable_voltage_control", default_value="false",
@@ -65,10 +113,22 @@ def generate_launch_description():
     # ── Shared substitutions ──────────────────────────────────────────────────
     sim_mode     = LaunchConfiguration("simulation_mode")
     opt_mode     = LaunchConfiguration("optimization_mode")
+    process_caps = LaunchConfiguration("process_capabilities")
     serial_port  = LaunchConfiguration("serial_port")
     hv_enable    = LaunchConfiguration("enable_voltage_control")
     q_target     = LaunchConfiguration("quality_target")
     ns           = LaunchConfiguration("namespace")
+    robot_model  = LaunchConfiguration("robot_model_variant")
+    collector_mode = LaunchConfiguration("collector_mode")
+    enable_presentation_game = LaunchConfiguration("enable_presentation_game")
+    presentation_camera_index = LaunchConfiguration("presentation_camera_index")
+    presentation_tracked_hand = LaunchConfiguration("presentation_tracked_hand")
+    presentation_invert_direction = LaunchConfiguration("presentation_invert_direction")
+    presentation_debug_visualization = LaunchConfiguration("presentation_debug_visualization")
+    spawn_x      = LaunchConfiguration("spawn_x")
+    spawn_y      = LaunchConfiguration("spawn_y")
+    spawn_z      = LaunchConfiguration("spawn_z")
+    spawn_yaw    = LaunchConfiguration("spawn_yaw")
 
     # ── Common QoS params ─────────────────────────────────────────────────────
     common_params = [
@@ -86,11 +146,16 @@ def generate_launch_description():
         namespace=ns,
         parameters=[
             {"simulation_mode": sim_mode},
+            {"robot_model_variant": robot_model},
             {"serial_port": serial_port},
             {"baud_rate": 115200},
             {"control_frequency": 10.0},
             {"enable_trajectory_smoothing": True},
             {"enable_singularity_avoidance": True},
+            {"enable_motion_command_control": enable_presentation_game},
+            {"motion_command_timeout_s": 0.75},
+            {"motion_command_confidence_threshold": 0.4},
+            {"motion_command_blend_alpha": 0.3},
         ],
         output="screen",
         emulate_tty=True,
@@ -113,6 +178,22 @@ def generate_launch_description():
         ],
         output="screen",
         emulate_tty=True,
+        condition=IfCondition(PythonExpression(["'", collector_mode, "' == 'active'"])),
+    )
+
+    passive_collector_node = Node(
+        package="electrospin_bringup",
+        executable="passive_collector",
+        name="passive_collector",
+        namespace=ns,
+        parameters=[
+            {"fixed_rpm": 0.0},
+            {"temperature_c": 25.0},
+            {"publish_frequency_hz": 5.0},
+        ],
+        output="screen",
+        emulate_tty=True,
+        condition=IfCondition(PythonExpression(["'", collector_mode, "' == 'passive_fixed'"])),
     )
 
     syringe_controller_node = Node(
@@ -144,11 +225,53 @@ def generate_launch_description():
         ],
         output="screen",
         emulate_tty=True,
+        condition=UnlessCondition(enable_presentation_game),
+    )
+
+    presentation_tracking_node = Node(
+        package="human_tracking",
+        executable="human_tracking_node",
+        name="presentation_tracking",
+        namespace=ns,
+        parameters=[
+            {"simulation_mode": sim_mode},
+            {"camera_index": presentation_camera_index},
+            {"tracking_fps": 20},
+            {"debug_visualization": presentation_debug_visualization},
+            {"enable_pose": True},
+            {"enable_hands": True},
+            {"gesture_debounce_s": 0.2},
+        ],
+        output="screen",
+        emulate_tty=True,
+        condition=IfCondition(enable_presentation_game),
+    )
+
+    presentation_game_node = Node(
+        package="electrospin_bringup",
+        executable="presentation_game",
+        name="presentation_game",
+        namespace=ns,
+        parameters=[
+            {"tracked_hand": presentation_tracked_hand},
+            {"invert_direction": presentation_invert_direction},
+            {"activation_gesture": "point_or_open"},
+            {"deadband_m": 0.05},
+            {"max_lateral_offset_m": 0.07},
+            {"joint6_max_deg": 35.0},
+            {"base_joint_angles_deg": [0.0, 20.0, -20.0, 0.0, -90.0, 0.0]},
+            {"publish_rate_hz": 12.0},
+            {"direction_smoothing": 0.35},
+        ],
+        output="screen",
+        emulate_tty=True,
+        condition=IfCondition(enable_presentation_game),
     )
 
     # Delayed start for AI controller (wait for sensors to warm up)
     ai_controller_node = TimerAction(
         period=5.0,
+        condition=UnlessCondition(enable_presentation_game),
         actions=[
             Node(
                 package="ai_controller",
@@ -157,6 +280,7 @@ def generate_launch_description():
                 namespace=ns,
                 parameters=[
                     {"optimization_mode": opt_mode},
+                    {"process_capabilities": process_caps},
                     {"decision_frequency_hz": 2.0},
                     {"quality_target": q_target},
                     {"command_smoothing_alpha": 0.3},
@@ -199,6 +323,11 @@ def generate_launch_description():
         ]),
         launch_arguments={
             "simulation_mode": sim_mode,
+            "robot_model_variant": robot_model,
+            "spawn_x": spawn_x,
+            "spawn_y": spawn_y,
+            "spawn_z": spawn_z,
+            "spawn_yaw": spawn_yaw,
         }.items(),
         condition=IfCondition(LaunchConfiguration("enable_simulation_env")),
     )
@@ -230,6 +359,8 @@ def generate_launch_description():
         namespace=ns,
         parameters=[
             {"simulation_mode": sim_mode},
+            {"enable_collector_control": PythonExpression(["'", collector_mode, "' == 'active'"])},
+            {"enable_pump_control": PythonExpression(["'", process_caps, "' == 'full_process'"])},
         ],
         output="screen",
     )
@@ -269,8 +400,11 @@ def generate_launch_description():
         # Core nodes (parallel startup)
         robot_controller_node,
         collector_controller_node,
+        passive_collector_node,
         syringe_controller_node,
         vision_system_node,
+        presentation_tracking_node,
+        presentation_game_node,
         # Delayed AI (wait for sensors)
         ai_controller_node,
         # UI

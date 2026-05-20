@@ -104,6 +104,12 @@ class OptMode(IntEnum):
     RL_POLICY    = 4   # Future: reinforcement learning
 
 
+class ProcessCapabilities(IntEnum):
+    ROBOT_ONLY = 0
+    ROBOT_PLUS_VISION = 1
+    FULL_PROCESS = 2
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Rule-Based Correction Engine
 # ─────────────────────────────────────────────────────────────────────────────
@@ -281,6 +287,7 @@ class AIControllerNode(Node):
 
         # ── Parameters ────────────────────────────────────────────────────────
         self.declare_parameter("optimization_mode", "adaptive")  # rule|adaptive|off
+        self.declare_parameter("process_capabilities", "full_process")
         self.declare_parameter("decision_frequency_hz", 2.0)
         self.declare_parameter("quality_target", 0.75)
         self.declare_parameter("command_smoothing_alpha", 0.3)   # EMA for commands
@@ -288,6 +295,7 @@ class AIControllerNode(Node):
         self.declare_parameter("min_quality_for_adaptation", 0.1)
 
         mode_str   = self.get_parameter("optimization_mode").value
+        caps_str   = self.get_parameter("process_capabilities").value
         dec_freq   = self.get_parameter("decision_frequency_hz").value
         self.quality_target = self.get_parameter("quality_target").value
         self.cmd_alpha      = self.get_parameter("command_smoothing_alpha").value
@@ -300,6 +308,14 @@ class AIControllerNode(Node):
             "adaptive": OptMode.ADAPTIVE,
             "rl":       OptMode.RL_POLICY,
         }.get(mode_str, OptMode.ADAPTIVE)
+        self.process_capabilities = {
+            "robot_only": ProcessCapabilities.ROBOT_ONLY,
+            "robot_plus_vision": ProcessCapabilities.ROBOT_PLUS_VISION,
+            "full_process": ProcessCapabilities.FULL_PROCESS,
+        }.get(caps_str, ProcessCapabilities.FULL_PROCESS)
+        self.full_process_enabled = self.process_capabilities == ProcessCapabilities.FULL_PROCESS
+        if not self.full_process_enabled:
+            self.hv_enabled = False
 
         # ── Components ────────────────────────────────────────────────────────
         self.limits   = ProcessLimits()
@@ -307,8 +323,8 @@ class AIControllerNode(Node):
         self.adaptive = AdaptiveOptimizer(self.limits)
 
         # ── State ─────────────────────────────────────────────────────────────
-        self.current_params = ProcessParams()   # Current setpoints
-        self.smoothed_params = ProcessParams()  # EMA-smoothed command output
+        self.current_params = self._apply_process_capabilities(ProcessParams())
+        self.smoothed_params = self._apply_process_capabilities(ProcessParams())
 
         self.latest_quality:   Optional[FiberQuality]   = None
         self.latest_collector: Optional[CollectorStatus] = None
@@ -365,8 +381,22 @@ class AIControllerNode(Node):
 
         self.get_logger().info(
             f"[AIController] Initialized. Mode={mode_str}, "
-            f"TargetQuality={self.quality_target}, Freq={dec_freq}Hz"
+            f"Capabilities={caps_str}, TargetQuality={self.quality_target}, Freq={dec_freq}Hz"
         )
+
+    def _apply_process_capabilities(self, params: ProcessParams) -> ProcessParams:
+        """Disable commands for hardware that is not available on the real bench."""
+        if self.full_process_enabled:
+            return params.clamp(self.limits)
+
+        return ProcessParams(
+            distance_mm=params.distance_mm,
+            scan_speed=params.scan_speed,
+            scan_amplitude=params.scan_amplitude,
+            rpm=0.0,
+            flow_rate=0.0,
+            voltage_kv=0.0,
+        ).clamp(self.limits)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Subscriber Callbacks
@@ -443,7 +473,7 @@ class AIControllerNode(Node):
             else:
                 final_params = rule_params
 
-            self.current_params = final_params
+            self.current_params = self._apply_process_capabilities(final_params)
 
         # ── Apply EMA smoothing to commands ───────────────────────────────────
         α = self.cmd_alpha
@@ -455,6 +485,7 @@ class AIControllerNode(Node):
             flow_rate      = α * self.current_params.flow_rate      + (1-α) * self.smoothed_params.flow_rate,
             voltage_kv     = α * self.current_params.voltage_kv     + (1-α) * self.smoothed_params.voltage_kv,
         )
+        self.smoothed_params = self._apply_process_capabilities(self.smoothed_params)
 
         # ── Compute confidence ────────────────────────────────────────────────
         confidence = float(np.clip(
@@ -487,11 +518,11 @@ class AIControllerNode(Node):
         cmd.target_distance   = float(params.distance_mm)
         cmd.target_scan_speed = float(params.scan_speed)
         cmd.scan_amplitude    = float(params.scan_amplitude)
-        cmd.target_rpm        = float(params.rpm)
-        cmd.target_flowrate   = float(params.flow_rate)
-        cmd.target_voltage    = float(params.voltage_kv) if self.hv_enabled else 0.0
-        cmd.collector_enable  = params.rpm > 0
-        cmd.pump_enable       = params.flow_rate > 0
+        cmd.target_rpm        = float(params.rpm) if self.full_process_enabled else 0.0
+        cmd.target_flowrate   = float(params.flow_rate) if self.full_process_enabled else 0.0
+        cmd.target_voltage    = float(params.voltage_kv) if self.full_process_enabled and self.hv_enabled else 0.0
+        cmd.collector_enable  = self.full_process_enabled and params.rpm > 0
+        cmd.pump_enable       = self.full_process_enabled and params.flow_rate > 0
         cmd.hv_enable         = self.hv_enabled
 
         cmd.source            = 1  # AI_AUTO
@@ -506,6 +537,7 @@ class AIControllerNode(Node):
         history = list(self.session_quality_history)
         status = {
             "mode":             self.opt_mode.name,
+            "capabilities":     self.process_capabilities.name,
             "autonomous":       self.autonomous_mode,
             "cycle":            self.opt_cycle_count,
             "current_quality":  round(float(quality.overall_quality), 3),

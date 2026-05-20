@@ -37,6 +37,22 @@ class CommandBridgeNode(Node):
         super().__init__("command_bridge")
 
         self.declare_parameter("simulation_mode", True)
+        self.declare_parameter("enable_collector_control", True)
+        self.declare_parameter("enable_pump_control", True)
+        raw_enable_collector = self.get_parameter("enable_collector_control").value
+        if isinstance(raw_enable_collector, str):
+            self.enable_collector_control = raw_enable_collector.strip().lower() in {
+                "1", "true", "yes", "on"
+            }
+        else:
+            self.enable_collector_control = bool(raw_enable_collector)
+        raw_enable_pump = self.get_parameter("enable_pump_control").value
+        if isinstance(raw_enable_pump, str):
+            self.enable_pump_control = raw_enable_pump.strip().lower() in {
+                "1", "true", "yes", "on"
+            }
+        else:
+            self.enable_pump_control = bool(raw_enable_pump)
 
         reliable_qos = QoSProfile(
             reliability=ReliabilityPolicy.RELIABLE,
@@ -60,13 +76,13 @@ class CommandBridgeNode(Node):
 
     def _on_command(self, msg: ElectrospinCommand):
         # RPM
-        if msg.target_rpm >= 0:
+        if self.enable_collector_control and msg.target_rpm >= 0:
             rpm_msg = Float32()
             rpm_msg.data = float(msg.target_rpm)
             self.pub_target_rpm.publish(rpm_msg)
 
         # Flow rate
-        if msg.target_flowrate >= 0:
+        if self.enable_pump_control and msg.target_flowrate >= 0:
             flow_msg = Float32()
             flow_msg.data = float(msg.target_flowrate)
             self.pub_target_flow.publish(flow_msg)
@@ -78,13 +94,15 @@ class CommandBridgeNode(Node):
             self.pub_target_distance.publish(dist_msg)
 
         # Enable signals
-        ce = Bool()
-        ce.data = msg.collector_enable
-        self.pub_collector_enable.publish(ce)
+        if self.enable_collector_control:
+            ce = Bool()
+            ce.data = msg.collector_enable
+            self.pub_collector_enable.publish(ce)
 
-        pe = Bool()
-        pe.data = msg.pump_enable
-        self.pub_pump_enable.publish(pe)
+        if self.enable_pump_control:
+            pe = Bool()
+            pe.data = msg.pump_enable
+            self.pub_pump_enable.publish(pe)
 
 
 def main(args=None):

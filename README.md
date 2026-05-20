@@ -1,5 +1,39 @@
 # ElectroSpin Autonomous Nanofiber Fabrication Platform
 
+Commande de démo recommandée :
+colcon build --packages-select ai_controller electrospin_bringup
+source install/setup.bash
+ros2 launch electrospin_bringup electrospin_bringup.launch.py \
+  simulation_mode:=false \
+  collector_mode:=passive_fixed \
+  process_capabilities:=robot_plus_vision
+
+ros2 launch electrospin_bringup electrospin_bringup.launch.py \
+  simulation_mode:=false \
+  collector_mode:=passive_fixed \
+  process_capabilities:=robot_only \
+  optimization_mode:=off \
+  enable_presentation_game:=true \
+  presentation_tracked_hand:=right
+Si l’image caméra est miroir et que droite/gauche paraît inversé :
+
+ros2 launch electrospin_bringup electrospin_bringup.launch.py \
+  simulation_mode:=false \
+  collector_mode:=passive_fixed \
+  process_capabilities:=robot_only \
+  optimization_mode:=off \
+  enable_presentation_game:=true \
+  presentation_tracked_hand:=right \
+  presentation_invert_direction:=true
+
+ros2 launch electrospin_bringup electrospin_bringup.launch.py \
+  simulation_mode:=false \
+  collector_mode:=passive_fixed \
+  process_capabilities:=robot_only \
+  optimization_mode:=off \
+  enable_presentation_game:=true \
+  presentation_tracked_hand:=right
+
 ROS2-based autonomous electrospinning system for MyCobot 280 robotic arm with AI-assisted nanofiber deposition optimization and real-time teleoperation.
 
 ---

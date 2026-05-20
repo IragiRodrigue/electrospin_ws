@@ -37,7 +37,7 @@ from geometry_msgs.msg import PoseStamped, Point, Twist
 from std_msgs.msg import String, Float32, Bool, Header
 from builtin_interfaces.msg import Time
 
-from electrospin_interfaces.msg import ElectrospinCommand, SystemStatus
+from electrospin_interfaces.msg import ElectrospinCommand, MotionCommand, SystemStatus
 
 # Hardware abstraction - gracefully degrade in simulation mode
 try:
@@ -322,16 +322,27 @@ class RobotControllerNode(Node):
         /electrospin_command   → electrospin_interfaces/ElectrospinCommand
     """
 
-    JOINT_NAMES = [
+    INTERNAL_JOINT_NAMES = [
         "joint1_link", "joint2_link", "joint3_link",
         "joint4_link", "joint5_link", "joint6_link"
     ]
+    OFFICIAL_280_JOINT_NAMES = [
+        "joint2_to_joint1", "joint3_to_joint2", "joint4_to_joint3",
+        "joint5_to_joint4", "joint6_to_joint5", "joint6output_to_joint6"
+    ]
+
+    @staticmethod
+    def _as_bool(value) -> bool:
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
     def __init__(self):
         super().__init__("robot_controller")
 
         # ── Parameters ───────────────────────────────────────────────────────
         self.declare_parameter("simulation_mode", True)
+        self.declare_parameter("robot_model_variant", "internal")
         self.declare_parameter("serial_port", RobotConfig.SERIAL_PORT)
         self.declare_parameter("baud_rate", RobotConfig.BAUD_RATE)
         self.declare_parameter("control_frequency", 10.0)  # Hz
@@ -340,11 +351,40 @@ class RobotControllerNode(Node):
         self.declare_parameter("scan_speed_mms", RobotConfig.DEFAULT_SCAN_SPEED)
         self.declare_parameter("enable_trajectory_smoothing", True)
         self.declare_parameter("enable_singularity_avoidance", True)
+        self.declare_parameter("enable_motion_command_control", True)
+        self.declare_parameter("motion_command_timeout_s", 0.75)
+        self.declare_parameter("motion_command_confidence_threshold", 0.4)
+        self.declare_parameter("motion_command_blend_alpha", 0.3)
 
         self.sim_mode = self.get_parameter("simulation_mode").value
+        robot_model_variant = self.get_parameter("robot_model_variant").value
         port          = self.get_parameter("serial_port").value
         baud          = self.get_parameter("baud_rate").value
         ctrl_freq     = self.get_parameter("control_frequency").value
+        self.enable_motion_command_control = self._as_bool(
+            self.get_parameter("enable_motion_command_control").value
+        )
+        self.motion_command_timeout_s = float(
+            self.get_parameter("motion_command_timeout_s").value
+        )
+        self.motion_command_confidence_threshold = float(
+            self.get_parameter("motion_command_confidence_threshold").value
+        )
+        self.motion_command_blend_alpha = float(
+            self.get_parameter("motion_command_blend_alpha").value
+        )
+
+        official_280_variants = {
+            "mycobot_280_jn",
+            "mycobot_280_riscv",
+            "mycobot_280_x3pi",
+            "mycobot_280_rdkx5",
+            "mycobot_280_arduino",
+        }
+        if robot_model_variant in official_280_variants:
+            self.joint_names = self.OFFICIAL_280_JOINT_NAMES
+        else:
+            self.joint_names = self.INTERNAL_JOINT_NAMES
 
         # ── Hardware ─────────────────────────────────────────────────────────
         self.hal = MyCobotHAL(port, baud, simulation_mode=self.sim_mode)
@@ -361,6 +401,15 @@ class RobotControllerNode(Node):
         self.robot_state:         str   = "IDLE"
         self.coverage_map         = np.zeros(64)   # 64-zone coverage tracking
         self.last_cmd_time        = self.get_clock().now()
+        self.last_motion_cmd_time = None
+        self.motion_target_coords_mm: Optional[List[float]] = None
+        self.motion_target_joint_angles_deg: Optional[List[float]] = None
+        self.last_sent_coords_mm: List[float] = [
+            self.config.COLLECTOR_ORIGIN_X,
+            self.config.COLLECTOR_ORIGIN_Y - self.current_distance_mm,
+            self.config.COLLECTOR_ORIGIN_Z,
+        ]
+        self.last_sent_joint_angles_deg: List[float] = list(self.config.READY_ANGLES)
 
         # ── Callback groups ───────────────────────────────────────────────────
         self.cb_group_reentrant = ReentrantCallbackGroup()
@@ -397,6 +446,13 @@ class RobotControllerNode(Node):
             reliable_qos,
             callback_group=self.cb_group_reentrant
         )
+        self.sub_motion_command = self.create_subscription(
+            MotionCommand,
+            "/motion_command",
+            self._on_motion_command,
+            reliable_qos,
+            callback_group=self.cb_group_reentrant
+        )
 
         # ── Timers ────────────────────────────────────────────────────────────
         self.control_timer = self.create_timer(
@@ -412,7 +468,7 @@ class RobotControllerNode(Node):
 
         self.get_logger().info(
             f"[RobotController] Initialized. Simulation={self.sim_mode}, "
-            f"Port={port}@{baud}"
+            f"Model={robot_model_variant}, Port={port}@{baud}"
         )
 
         # Move to ready position asynchronously
@@ -446,12 +502,57 @@ class RobotControllerNode(Node):
     # Control Loop
     # ─────────────────────────────────────────────────────────────────────────
 
+    def _on_motion_command(self, msg: MotionCommand):
+        """Handle direct motion commands for teleoperation and presentation demos."""
+        if not self.enable_motion_command_control:
+            return
+
+        if not msg.is_safe or msg.confidence < self.motion_command_confidence_threshold:
+            return
+
+        if any(abs(v) > 1e-6 for v in msg.target_joint_angles):
+            target_joint_angles_deg = [math.degrees(float(v)) for v in msg.target_joint_angles]
+            if not self._joint_angles_within_limits(target_joint_angles_deg):
+                self.get_logger().warn("[RobotController] Rejected motion command outside joint limits")
+                return
+            self.motion_target_joint_angles_deg = target_joint_angles_deg
+            self.motion_target_coords_mm = None
+            self.last_motion_cmd_time = self.get_clock().now()
+            return
+
+        target_x_mm = float(msg.target_position[0]) * 1000.0
+        target_y_mm = float(msg.target_position[1]) * 1000.0
+        target_z_mm = float(msg.target_position[2]) * 1000.0
+
+        if not self._coords_within_workspace(target_x_mm, target_y_mm, target_z_mm):
+            self.get_logger().warn(
+                "[RobotController] Rejected motion command outside workspace: "
+                f"x={target_x_mm:.1f} y={target_y_mm:.1f} z={target_z_mm:.1f}"
+            )
+            return
+
+        self.motion_target_coords_mm = [target_x_mm, target_y_mm, target_z_mm]
+        self.motion_target_joint_angles_deg = None
+        self.last_motion_cmd_time = self.get_clock().now()
+
     def _control_loop(self):
         """Main control loop: updates robot position at ctrl_frequency Hz."""
         if self.robot_state == "IDLE":
             return
 
         try:
+            if self._teleop_active():
+                if self.motion_target_joint_angles_deg is not None:
+                    target_angles = self._blend_motion_joint_target(self.motion_target_joint_angles_deg)
+                    self.hal.send_joint_angles(target_angles, speed=self.config.SMOOTH_SPEED)
+                    self.last_sent_joint_angles_deg = list(target_angles)
+                elif self.motion_target_coords_mm is not None:
+                    target_coords = self._blend_motion_target(self.motion_target_coords_mm)
+                    coords = [target_coords[0], target_coords[1], target_coords[2], 0.0, -90.0, 0.0]
+                    self.hal.send_coords(coords, speed=self.config.SMOOTH_SPEED)
+                    self.last_sent_coords_mm = list(target_coords)
+                return
+
             # Advance scan phase based on speed
             dt = 0.1  # approx control period
             phase_advance = (self.scan_speed_mms / self.scan_amplitude_mm) * dt
@@ -476,6 +577,7 @@ class RobotControllerNode(Node):
             # Send to hardware
             coords = [target_x, target_y, target_z, 0.0, -90.0, 0.0]
             self.hal.send_coords(coords, speed=self.config.TRAJECTORY_SPEED)
+            self.last_sent_coords_mm = [target_x, target_y, target_z]
 
             # Update coverage map
             map_idx = int(
@@ -501,7 +603,7 @@ class RobotControllerNode(Node):
         # ── JointState ───────────────────────────────────────────────────────
         js = JointState()
         js.header.stamp = now
-        js.name = self.JOINT_NAMES
+        js.name = self.joint_names
         js.position = [math.radians(a) for a in angles]
         js.velocity = [0.0] * 6
         js.effort   = [0.0] * 6
@@ -517,6 +619,7 @@ class RobotControllerNode(Node):
         status = {
             "state":          self.robot_state,
             "sim_mode":       self.sim_mode,
+            "teleop_active":  self._teleop_active(),
             "distance_mm":    round(self.current_distance_mm, 2),
             "target_dist_mm": round(self.target_distance_mm, 2),
             "needle_x_mm":    round(self.needle_x_mm, 2),
@@ -547,8 +650,57 @@ class RobotControllerNode(Node):
             self.config.READY_ANGLES, speed=self.config.SMOOTH_SPEED
         )
         time.sleep(3.0)
+        self.last_sent_joint_angles_deg = list(self.config.READY_ANGLES)
+        self.last_sent_coords_mm = [
+            self.config.COLLECTOR_ORIGIN_X,
+            self.config.COLLECTOR_ORIGIN_Y - self.current_distance_mm,
+            self.config.COLLECTOR_ORIGIN_Z,
+        ]
         self.robot_state = "READY"
         self.get_logger().info("[RobotController] Ready for electrospinning.")
+
+    def _coords_within_workspace(self, x_mm: float, y_mm: float, z_mm: float) -> bool:
+        return (
+            self.config.WORKSPACE_X_MIN <= x_mm <= self.config.WORKSPACE_X_MAX and
+            self.config.WORKSPACE_Y_MIN <= y_mm <= self.config.WORKSPACE_Y_MAX and
+            self.config.WORKSPACE_Z_MIN <= z_mm <= self.config.WORKSPACE_Z_MAX
+        )
+
+    def _joint_angles_within_limits(self, joint_angles_deg: List[float]) -> bool:
+        if len(joint_angles_deg) != 6:
+            return False
+        for angle, (lo, hi) in zip(joint_angles_deg, self.config.JOINT_LIMITS):
+            if angle < lo or angle > hi:
+                return False
+        return True
+
+    def _teleop_active(self) -> bool:
+        if not self.enable_motion_command_control or self.motion_target_coords_mm is None:
+            return False
+        if self.last_motion_cmd_time is None:
+            return False
+        age_s = (
+            self.get_clock().now().nanoseconds - self.last_motion_cmd_time.nanoseconds
+        ) / 1e9
+        return age_s <= self.motion_command_timeout_s
+
+    def _blend_motion_target(self, target_coords_mm: List[float]) -> List[float]:
+        alpha = min(max(self.motion_command_blend_alpha, 0.0), 1.0)
+        return [
+            (1.0 - alpha) * current + alpha * target
+            for current, target in zip(self.last_sent_coords_mm, target_coords_mm)
+        ]
+
+    def _blend_motion_joint_target(self, target_angles_deg: List[float]) -> List[float]:
+        alpha = min(max(self.motion_command_blend_alpha, 0.0), 1.0)
+        blended = [
+            (1.0 - alpha) * current + alpha * target
+            for current, target in zip(self.last_sent_joint_angles_deg, target_angles_deg)
+        ]
+        clipped = []
+        for angle, (lo, hi) in zip(blended, self.config.JOINT_LIMITS):
+            clipped.append(float(np.clip(angle, lo, hi)))
+        return clipped
 
     def destroy_node(self):
         """Safe shutdown."""
