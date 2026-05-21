@@ -14,13 +14,13 @@ Usage:
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument, IncludeLaunchDescription,
-    GroupAction, OpaqueFunction, LogInfo, TimerAction
+    LogInfo, TimerAction
 )
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, PythonExpression
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch_ros.actions import Node, PushRosNamespace
-from launch_ros.substitutions import FindPackageShare
+from launch_ros.actions import Node
+from ament_index_python.packages import get_package_share_directory
 import os
 
 
@@ -316,10 +316,11 @@ def generate_launch_description():
 
     simulation_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
-            PathJoinSubstitution([
-                FindPackageShare("simulation_system"),
-                "launch", "simulation.launch.py"
-            ])
+            os.path.join(
+                get_package_share_directory("simulation_system"),
+                "launch",
+                "simulation.launch.py",
+            )
         ]),
         launch_arguments={
             "simulation_mode": sim_mode,

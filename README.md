@@ -98,10 +98,20 @@ ROS2-based autonomous electrospinning system for MyCobot 280 robotic arm with AI
 - ROS2 Humble (or Foxy)
 - Python 3.8+
 
-### Install ROS2
+### ROS 2 Galactic Notes
+- Supported target for Galactic: Ubuntu 20.04 + Python 3.8
+- Install ROS packages with `ros-galactic-*` names instead of `ros-humble-*`
+- `mediapipe` is optional and should be installed with `pip`, not `apt`
+- `cv_bridge` should come from ROS packages, not `python3-cv-bridge`
+
+### Install ROS2 Galactic
 ```bash
-# Follow official ROS2 Humble installation:
-# https://docs.ros.org/en/humble/Installation.html
+sudo apt install ros-galactic-desktop
+source /opt/ros/galactic/setup.bash
+```
+
+### Install ROS2 Humble (optional)
+```bash
 sudo apt install ros-humble-desktop
 source /opt/ros/humble/setup.bash
 ```
@@ -115,7 +125,18 @@ pip3 install pymycobot
 pip3 install torch ultralytics
 ```
 
-### Install ROS2 Dependencies
+### Install ROS2 Dependencies (Galactic)
+```bash
+sudo apt install \
+  ros-galactic-gazebo-ros-pkgs \
+  ros-galactic-robot-state-publisher \
+  ros-galactic-joint-state-publisher-gui \
+  ros-galactic-rviz2 \
+  ros-galactic-cv-bridge \
+  python3-colcon-common-extensions
+```
+
+### Install ROS2 Dependencies (Humble, optional)
 ```bash
 sudo apt install \
   ros-humble-gazebo-ros-pkgs \
@@ -125,6 +146,11 @@ sudo apt install \
   ros-humble-cv-bridge \
   ros-humble-moveit \
   python3-colcon-common-extensions
+```
+
+### Galactic Teleoperation Extras
+```bash
+pip3 install mediapipe==0.10.0
 ```
 
 ---

@@ -11,6 +11,7 @@
   <depend>std_msgs</depend>
   <depend>electrospin_interfaces</depend>
 
+  <exec_depend>ament_index_python</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
   <exec_depend>human_tracking</exec_depend>
 
