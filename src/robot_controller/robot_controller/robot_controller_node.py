@@ -66,8 +66,8 @@ class RobotConfig:
     """Central configuration for robot controller."""
 
     # MyCobot hardware
-    SERIAL_PORT = "/dev/ttyUSB0"
-    BAUD_RATE = 115200
+    SERIAL_PORT = "/dev/ttyTHS1"
+    BAUD_RATE = 1000000
 
     # Workspace limits (mm, in MyCobot frame)
     WORKSPACE_X_MIN = -250.0
@@ -349,6 +349,12 @@ class RobotControllerNode(Node):
         self.declare_parameter("default_distance_mm", RobotConfig.DEFAULT_DISTANCE_MM)
         self.declare_parameter("scan_amplitude_mm", RobotConfig.DEFAULT_SCAN_AMPLITUDE)
         self.declare_parameter("scan_speed_mms", RobotConfig.DEFAULT_SCAN_SPEED)
+        self.declare_parameter("collector_origin_x_mm", RobotConfig.COLLECTOR_ORIGIN_X)
+        self.declare_parameter("collector_origin_y_mm", RobotConfig.COLLECTOR_ORIGIN_Y)
+        self.declare_parameter("collector_origin_z_mm", RobotConfig.COLLECTOR_ORIGIN_Z)
+        self.declare_parameter("collector_width_mm", RobotConfig.COLLECTOR_WIDTH_MM)
+        self.declare_parameter("use_tracked_collector_pose", False)
+        self.declare_parameter("tracked_collector_pose_timeout_s", 1.0)
         self.declare_parameter("enable_trajectory_smoothing", True)
         self.declare_parameter("enable_singularity_avoidance", True)
         self.declare_parameter("enable_motion_command_control", True)
@@ -361,6 +367,24 @@ class RobotControllerNode(Node):
         port          = self.get_parameter("serial_port").value
         baud          = self.get_parameter("baud_rate").value
         ctrl_freq     = self.get_parameter("control_frequency").value
+        self.fixed_collector_origin_x_mm = float(
+            self.get_parameter("collector_origin_x_mm").value
+        )
+        self.fixed_collector_origin_y_mm = float(
+            self.get_parameter("collector_origin_y_mm").value
+        )
+        self.fixed_collector_origin_z_mm = float(
+            self.get_parameter("collector_origin_z_mm").value
+        )
+        self.collector_width_mm = float(
+            self.get_parameter("collector_width_mm").value
+        )
+        self.use_tracked_collector_pose = self._as_bool(
+            self.get_parameter("use_tracked_collector_pose").value
+        )
+        self.tracked_collector_pose_timeout_s = float(
+            self.get_parameter("tracked_collector_pose_timeout_s").value
+        )
         self.enable_motion_command_control = self._as_bool(
             self.get_parameter("enable_motion_command_control").value
         )
@@ -402,12 +426,14 @@ class RobotControllerNode(Node):
         self.coverage_map         = np.zeros(64)   # 64-zone coverage tracking
         self.last_cmd_time        = self.get_clock().now()
         self.last_motion_cmd_time = None
+        self.last_tracked_collector_pose_time = None
+        self.tracked_collector_origin_mm: Optional[List[float]] = None
         self.motion_target_coords_mm: Optional[List[float]] = None
         self.motion_target_joint_angles_deg: Optional[List[float]] = None
         self.last_sent_coords_mm: List[float] = [
-            self.config.COLLECTOR_ORIGIN_X,
-            self.config.COLLECTOR_ORIGIN_Y - self.current_distance_mm,
-            self.config.COLLECTOR_ORIGIN_Z,
+            self.fixed_collector_origin_x_mm,
+            self.fixed_collector_origin_y_mm - self.current_distance_mm,
+            self.fixed_collector_origin_z_mm,
         ]
         self.last_sent_joint_angles_deg: List[float] = list(self.config.READY_ANGLES)
 
@@ -450,6 +476,13 @@ class RobotControllerNode(Node):
             MotionCommand,
             "/motion_command",
             self._on_motion_command,
+            reliable_qos,
+            callback_group=self.cb_group_reentrant
+        )
+        self.sub_collector_pose = self.create_subscription(
+            PoseStamped,
+            "/collector_pose",
+            self._on_collector_pose,
             reliable_qos,
             callback_group=self.cb_group_reentrant
         )
@@ -535,6 +568,18 @@ class RobotControllerNode(Node):
         self.motion_target_joint_angles_deg = None
         self.last_motion_cmd_time = self.get_clock().now()
 
+    def _on_collector_pose(self, msg: PoseStamped):
+        """Update the collector origin from camera-based tracking when enabled."""
+        if not self.use_tracked_collector_pose:
+            return
+
+        self.tracked_collector_origin_mm = [
+            float(msg.pose.position.x) * 1000.0,
+            float(msg.pose.position.y) * 1000.0,
+            float(msg.pose.position.z) * 1000.0,
+        ]
+        self.last_tracked_collector_pose_time = self.get_clock().now()
+
     def _control_loop(self):
         """Main control loop: updates robot position at ctrl_frequency Hz."""
         if self.robot_state == "IDLE":
@@ -568,11 +613,12 @@ class RobotControllerNode(Node):
             self.current_distance_mm += 0.1 * dist_error  # first-order filter
 
             # Compute target Cartesian position
-            target_x = self.config.COLLECTOR_ORIGIN_X + self.needle_x_mm
+            collector_x_mm, collector_y_mm, collector_z_mm = self._get_active_collector_origin_mm()
+            target_x = collector_x_mm + self.needle_x_mm
             target_y = (
-                self.config.COLLECTOR_ORIGIN_Y - self.current_distance_mm
+                collector_y_mm - self.current_distance_mm
             )
-            target_z = self.config.COLLECTOR_ORIGIN_Z
+            target_z = collector_z_mm
 
             # Send to hardware
             coords = [target_x, target_y, target_z, 0.0, -90.0, 0.0]
@@ -620,8 +666,14 @@ class RobotControllerNode(Node):
             "state":          self.robot_state,
             "sim_mode":       self.sim_mode,
             "teleop_active":  self._teleop_active(),
+            "collector_pose_source": self._collector_pose_source(),
             "distance_mm":    round(self.current_distance_mm, 2),
             "target_dist_mm": round(self.target_distance_mm, 2),
+            "collector_origin_mm": [
+                round(self._get_active_collector_origin_mm()[0], 2),
+                round(self._get_active_collector_origin_mm()[1], 2),
+                round(self._get_active_collector_origin_mm()[2], 2),
+            ],
             "needle_x_mm":    round(self.needle_x_mm, 2),
             "scan_speed":     round(self.scan_speed_mms, 2),
             "scan_amp":       round(self.scan_amplitude_mm, 2),
@@ -652,9 +704,9 @@ class RobotControllerNode(Node):
         time.sleep(3.0)
         self.last_sent_joint_angles_deg = list(self.config.READY_ANGLES)
         self.last_sent_coords_mm = [
-            self.config.COLLECTOR_ORIGIN_X,
-            self.config.COLLECTOR_ORIGIN_Y - self.current_distance_mm,
-            self.config.COLLECTOR_ORIGIN_Z,
+            self.fixed_collector_origin_x_mm,
+            self.fixed_collector_origin_y_mm - self.current_distance_mm,
+            self.fixed_collector_origin_z_mm,
         ]
         self.robot_state = "READY"
         self.get_logger().info("[RobotController] Ready for electrospinning.")
@@ -675,7 +727,9 @@ class RobotControllerNode(Node):
         return True
 
     def _teleop_active(self) -> bool:
-        if not self.enable_motion_command_control or self.motion_target_coords_mm is None:
+        if not self.enable_motion_command_control:
+            return False
+        if self.motion_target_coords_mm is None and self.motion_target_joint_angles_deg is None:
             return False
         if self.last_motion_cmd_time is None:
             return False
@@ -701,6 +755,28 @@ class RobotControllerNode(Node):
         for angle, (lo, hi) in zip(blended, self.config.JOINT_LIMITS):
             clipped.append(float(np.clip(angle, lo, hi)))
         return clipped
+
+    def _tracked_collector_pose_is_fresh(self) -> bool:
+        if not self.use_tracked_collector_pose:
+            return False
+        if self.tracked_collector_origin_mm is None or self.last_tracked_collector_pose_time is None:
+            return False
+        age_s = (
+            self.get_clock().now().nanoseconds - self.last_tracked_collector_pose_time.nanoseconds
+        ) / 1e9
+        return age_s <= self.tracked_collector_pose_timeout_s
+
+    def _get_active_collector_origin_mm(self) -> List[float]:
+        if self._tracked_collector_pose_is_fresh():
+            return list(self.tracked_collector_origin_mm)
+        return [
+            self.fixed_collector_origin_x_mm,
+            self.fixed_collector_origin_y_mm,
+            self.fixed_collector_origin_z_mm,
+        ]
+
+    def _collector_pose_source(self) -> str:
+        return "tracked" if self._tracked_collector_pose_is_fresh() else "fixed"
 
     def destroy_node(self):
         """Safe shutdown."""

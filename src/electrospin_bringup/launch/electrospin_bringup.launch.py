@@ -41,8 +41,112 @@ def generate_launch_description():
             description="Available real process actuators: robot_only, robot_plus_vision, or full_process"
         ),
         DeclareLaunchArgument(
-            "serial_port", default_value="/dev/ttyUSB0",
+            "serial_port", default_value="/dev/ttyTHS1",
             description="MyCobot serial port"
+        ),
+        DeclareLaunchArgument(
+            "baud_rate", default_value="1000000",
+            description="MyCobot serial baud rate"
+        ),
+        DeclareLaunchArgument(
+            "camera_index", default_value="0",
+            description="Vision camera index for the process camera"
+        ),
+        DeclareLaunchArgument(
+            "collector_parent_frame", default_value="base_link",
+            description="Parent TF frame used for the fixed collector frame"
+        ),
+        DeclareLaunchArgument(
+            "collector_frame", default_value="collector_frame",
+            description="TF child frame name for the fixed collector"
+        ),
+        DeclareLaunchArgument(
+            "collector_origin_x_m", default_value="0.0",
+            description="Fixed collector center X in parent frame (meters)"
+        ),
+        DeclareLaunchArgument(
+            "collector_origin_y_m", default_value="0.25",
+            description="Fixed collector center Y in parent frame (meters)"
+        ),
+        DeclareLaunchArgument(
+            "collector_origin_z_m", default_value="0.15",
+            description="Fixed collector center Z in parent frame (meters)"
+        ),
+        DeclareLaunchArgument(
+            "collector_yaw_rad", default_value="0.0",
+            description="Fixed collector yaw in parent frame (radians)"
+        ),
+        DeclareLaunchArgument(
+            "collector_width_m", default_value="0.06",
+            description="Usable collector width (meters)"
+        ),
+        DeclareLaunchArgument(
+            "enable_collector_tracking", default_value="false",
+            description="Detect the collector from the process camera using an ArUco marker"
+        ),
+        DeclareLaunchArgument(
+            "collector_tracking_marker_id", default_value="0",
+            description="Aruco marker id attached to the collector support"
+        ),
+        DeclareLaunchArgument(
+            "collector_marker_length_m", default_value="0.03",
+            description="Physical edge length of the collector tag marker"
+        ),
+        DeclareLaunchArgument(
+            "collector_tracking_camera_frame", default_value="camera_frame",
+            description="Frame name used for the process camera"
+        ),
+        DeclareLaunchArgument(
+            "camera_in_robot_x_m", default_value="0.0",
+            description="Process camera X in robot base frame (meters)"
+        ),
+        DeclareLaunchArgument(
+            "camera_in_robot_y_m", default_value="0.0",
+            description="Process camera Y in robot base frame (meters)"
+        ),
+        DeclareLaunchArgument(
+            "camera_in_robot_z_m", default_value="0.0",
+            description="Process camera Z in robot base frame (meters)"
+        ),
+        DeclareLaunchArgument(
+            "camera_in_robot_roll_rad", default_value="0.0",
+            description="Process camera roll in robot base frame (radians)"
+        ),
+        DeclareLaunchArgument(
+            "camera_in_robot_pitch_rad", default_value="0.0",
+            description="Process camera pitch in robot base frame (radians)"
+        ),
+        DeclareLaunchArgument(
+            "camera_in_robot_yaw_rad", default_value="0.0",
+            description="Process camera yaw in robot base frame (radians)"
+        ),
+        DeclareLaunchArgument(
+            "collector_from_tag_x_m", default_value="0.0",
+            description="Collector center X offset from the ArUco tag frame (meters)"
+        ),
+        DeclareLaunchArgument(
+            "collector_from_tag_y_m", default_value="0.0",
+            description="Collector center Y offset from the ArUco tag frame (meters)"
+        ),
+        DeclareLaunchArgument(
+            "collector_from_tag_z_m", default_value="0.0",
+            description="Collector center Z offset from the ArUco tag frame (meters)"
+        ),
+        DeclareLaunchArgument(
+            "collector_from_tag_roll_rad", default_value="0.0",
+            description="Collector center roll offset from the tag frame (radians)"
+        ),
+        DeclareLaunchArgument(
+            "collector_from_tag_pitch_rad", default_value="0.0",
+            description="Collector center pitch offset from the tag frame (radians)"
+        ),
+        DeclareLaunchArgument(
+            "collector_from_tag_yaw_rad", default_value="0.0",
+            description="Collector center yaw offset from the tag frame (radians)"
+        ),
+        DeclareLaunchArgument(
+            "collector_tracking_debug_visualization", default_value="true",
+            description="Publish an annotated camera stream for collector tracking"
         ),
         DeclareLaunchArgument(
             "enable_dashboard", default_value="true",
@@ -115,6 +219,32 @@ def generate_launch_description():
     opt_mode     = LaunchConfiguration("optimization_mode")
     process_caps = LaunchConfiguration("process_capabilities")
     serial_port  = LaunchConfiguration("serial_port")
+    baud_rate    = LaunchConfiguration("baud_rate")
+    camera_index = LaunchConfiguration("camera_index")
+    collector_parent_frame = LaunchConfiguration("collector_parent_frame")
+    collector_frame = LaunchConfiguration("collector_frame")
+    collector_origin_x_m = LaunchConfiguration("collector_origin_x_m")
+    collector_origin_y_m = LaunchConfiguration("collector_origin_y_m")
+    collector_origin_z_m = LaunchConfiguration("collector_origin_z_m")
+    collector_yaw_rad = LaunchConfiguration("collector_yaw_rad")
+    collector_width_m = LaunchConfiguration("collector_width_m")
+    enable_collector_tracking = LaunchConfiguration("enable_collector_tracking")
+    collector_tracking_marker_id = LaunchConfiguration("collector_tracking_marker_id")
+    collector_marker_length_m = LaunchConfiguration("collector_marker_length_m")
+    collector_tracking_camera_frame = LaunchConfiguration("collector_tracking_camera_frame")
+    camera_in_robot_x_m = LaunchConfiguration("camera_in_robot_x_m")
+    camera_in_robot_y_m = LaunchConfiguration("camera_in_robot_y_m")
+    camera_in_robot_z_m = LaunchConfiguration("camera_in_robot_z_m")
+    camera_in_robot_roll_rad = LaunchConfiguration("camera_in_robot_roll_rad")
+    camera_in_robot_pitch_rad = LaunchConfiguration("camera_in_robot_pitch_rad")
+    camera_in_robot_yaw_rad = LaunchConfiguration("camera_in_robot_yaw_rad")
+    collector_from_tag_x_m = LaunchConfiguration("collector_from_tag_x_m")
+    collector_from_tag_y_m = LaunchConfiguration("collector_from_tag_y_m")
+    collector_from_tag_z_m = LaunchConfiguration("collector_from_tag_z_m")
+    collector_from_tag_roll_rad = LaunchConfiguration("collector_from_tag_roll_rad")
+    collector_from_tag_pitch_rad = LaunchConfiguration("collector_from_tag_pitch_rad")
+    collector_from_tag_yaw_rad = LaunchConfiguration("collector_from_tag_yaw_rad")
+    collector_tracking_debug_visualization = LaunchConfiguration("collector_tracking_debug_visualization")
     hv_enable    = LaunchConfiguration("enable_voltage_control")
     q_target     = LaunchConfiguration("quality_target")
     ns           = LaunchConfiguration("namespace")
@@ -148,7 +278,13 @@ def generate_launch_description():
             {"simulation_mode": sim_mode},
             {"robot_model_variant": robot_model},
             {"serial_port": serial_port},
-            {"baud_rate": 115200},
+            {"baud_rate": baud_rate},
+            {"collector_origin_x_mm": PythonExpression([collector_origin_x_m, " * 1000.0"])},
+            {"collector_origin_y_mm": PythonExpression([collector_origin_y_m, " * 1000.0"])},
+            {"collector_origin_z_mm": PythonExpression([collector_origin_z_m, " * 1000.0"])},
+            {"collector_width_mm": PythonExpression([collector_width_m, " * 1000.0"])},
+            {"use_tracked_collector_pose": enable_collector_tracking},
+            {"tracked_collector_pose_timeout_s": 1.0},
             {"control_frequency": 10.0},
             {"enable_trajectory_smoothing": True},
             {"enable_singularity_avoidance": True},
@@ -156,6 +292,26 @@ def generate_launch_description():
             {"motion_command_timeout_s": 0.75},
             {"motion_command_confidence_threshold": 0.4},
             {"motion_command_blend_alpha": 0.3},
+        ],
+        output="screen",
+        emulate_tty=True,
+        condition=UnlessCondition(enable_collector_tracking),
+    )
+
+    collector_frame_node = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        name="collector_frame_publisher",
+        namespace=ns,
+        arguments=[
+            collector_origin_x_m,
+            collector_origin_y_m,
+            collector_origin_z_m,
+            "0.0",
+            "0.0",
+            collector_yaw_rad,
+            collector_parent_frame,
+            collector_frame,
         ],
         output="screen",
         emulate_tty=True,
@@ -218,6 +374,7 @@ def generate_launch_description():
         namespace=ns,
         parameters=[
             {"simulation_mode": sim_mode},
+            {"camera_index": camera_index},
             {"processing_fps": 10.0},
             {"use_yolo": False},
             {"temporal_smoothing": True},
@@ -226,6 +383,39 @@ def generate_launch_description():
         output="screen",
         emulate_tty=True,
         condition=UnlessCondition(enable_presentation_game),
+    )
+
+    collector_tracker_node = Node(
+        package="vision_system",
+        executable="collector_tracker_node",
+        name="collector_tracker",
+        namespace=ns,
+        parameters=[
+            {"enabled": enable_collector_tracking},
+            {"camera_frame": collector_tracking_camera_frame},
+            {"robot_base_frame": collector_parent_frame},
+            {"collector_frame": collector_frame},
+            {"marker_id": collector_tracking_marker_id},
+            {"marker_length_m": collector_marker_length_m},
+            {"camera_in_robot_x_m": camera_in_robot_x_m},
+            {"camera_in_robot_y_m": camera_in_robot_y_m},
+            {"camera_in_robot_z_m": camera_in_robot_z_m},
+            {"camera_in_robot_roll_rad": camera_in_robot_roll_rad},
+            {"camera_in_robot_pitch_rad": camera_in_robot_pitch_rad},
+            {"camera_in_robot_yaw_rad": camera_in_robot_yaw_rad},
+            {"collector_from_tag_x_m": collector_from_tag_x_m},
+            {"collector_from_tag_y_m": collector_from_tag_y_m},
+            {"collector_from_tag_z_m": collector_from_tag_z_m},
+            {"collector_from_tag_roll_rad": collector_from_tag_roll_rad},
+            {"collector_from_tag_pitch_rad": collector_from_tag_pitch_rad},
+            {"collector_from_tag_yaw_rad": collector_from_tag_yaw_rad},
+            {"debug_visualization": collector_tracking_debug_visualization},
+        ],
+        output="screen",
+        emulate_tty=True,
+        condition=IfCondition(
+            PythonExpression(["'", enable_collector_tracking, "' == 'true' and '", enable_presentation_game, "' != 'true'"])
+        ),
     )
 
     presentation_tracking_node = Node(
@@ -400,10 +590,12 @@ def generate_launch_description():
         log_start,
         # Core nodes (parallel startup)
         robot_controller_node,
+        collector_frame_node,
         collector_controller_node,
         passive_collector_node,
         syringe_controller_node,
         vision_system_node,
+        collector_tracker_node,
         presentation_tracking_node,
         presentation_game_node,
         # Delayed AI (wait for sensors)

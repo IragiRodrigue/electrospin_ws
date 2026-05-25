@@ -50,6 +50,19 @@ def resolve_spawn_pose(variant: str) -> dict:
     return defaults.get(variant, defaults["internal"])
 
 
+def resolve_gazebo_launch_file(base_dir: str, candidates):
+    """Pick the first Gazebo launch filename that exists on this ROS distro."""
+    for name in candidates:
+        candidate = os.path.join(base_dir, name)
+        if os.path.exists(candidate):
+            return candidate
+    raise FileNotFoundError(
+        "Could not find any Gazebo launch file in '{}': {}".format(
+            base_dir, ", ".join(candidates)
+        )
+    )
+
+
 def runtime_nodes(context, pkg_dir: str, world_file: str, rviz_file: str):
     robot_variant = LaunchConfiguration("robot_model_variant").perform(context)
     urdf_file = resolve_robot_urdf(pkg_dir, robot_variant)
@@ -64,6 +77,15 @@ def runtime_nodes(context, pkg_dir: str, world_file: str, rviz_file: str):
     spawn_y = auto_pose["y"] if spawn_y == "auto" else spawn_y
     spawn_z = auto_pose["z"] if spawn_z == "auto" else spawn_z
     spawn_yaw = auto_pose["yaw"] if spawn_yaw == "auto" else spawn_yaw
+    gazebo_launch_dir = os.path.join(get_package_share_directory("gazebo_ros"), "launch")
+    gzserver_launch = resolve_gazebo_launch_file(
+        gazebo_launch_dir,
+        ["gzserver.launch.py", "gz_server.launch.py"],
+    )
+    gzclient_launch = resolve_gazebo_launch_file(
+        gazebo_launch_dir,
+        ["gzclient.launch.py", "gz_client.launch.py"],
+    )
 
     return [
         LogInfo(msg=f"[simulation_system] Robot model variant: {robot_variant}"),
@@ -87,22 +109,15 @@ def runtime_nodes(context, pkg_dir: str, world_file: str, rviz_file: str):
         ),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource([
-                os.path.join(
-                    get_package_share_directory("gazebo_ros"),
-                    "launch",
-                    "gz_server.launch.py",
-                )
+                gzserver_launch
             ]),
             launch_arguments={
                 "world": world_file,
                 "verbose": "true",
             }.items(),
         ),
-        Node(
-            package="gazebo_ros",
-            executable="gzclient",
-            name="gzclient",
-            output="screen",
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource([gzclient_launch]),
             condition=IfCondition(LaunchConfiguration("gui")),
         ),
         Node(

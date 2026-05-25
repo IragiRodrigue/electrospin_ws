@@ -19,6 +19,7 @@ setup(
     entry_points={
         'console_scripts': [
             'vision_system_node = vision_system.vision_controller_node:main',
+            'collector_tracker_node = vision_system.collector_tracker_node:main',
         ],
     },
 )

@@ -13,7 +13,8 @@ def generate_launch_description():
 
     return LaunchDescription([
         DeclareLaunchArgument('simulation_mode', default_value='true'),
-        DeclareLaunchArgument('serial_port', default_value='/dev/ttyUSB0'),
+        DeclareLaunchArgument('serial_port', default_value='/dev/ttyTHS1'),
+        DeclareLaunchArgument('baud_rate', default_value='1000000'),
 
         Node(
             package='robot_controller',
@@ -24,6 +25,7 @@ def generate_launch_description():
                 os.path.join(pkg_share, 'config', 'robot_controller.yaml'),
                 {'simulation_mode': LaunchConfiguration('simulation_mode')},
                 {'serial_port': LaunchConfiguration('serial_port')},
+                {'baud_rate': LaunchConfiguration('baud_rate')},
             ],
             output='screen',
             emulate_tty=True,

@@ -38,6 +38,36 @@ ROS2-based autonomous electrospinning system for MyCobot 280 robotic arm with AI
 
 ---
 
+## Collector Camera Workflow
+
+For camera-based collector recognition:
+
+- Standalone Python test first: [tools/collector_camera_demo.py](/C:/Users/Rodrigue/Documents/ai/electrospin_ws/tools/collector_camera_demo.py)
+- Example config: [tools/collector_camera_demo_config.example.json](/C:/Users/Rodrigue/Documents/ai/electrospin_ws/tools/collector_camera_demo_config.example.json)
+- Full setup guide: [docs/collector_camera_setup.md](/C:/Users/Rodrigue/Documents/ai/electrospin_ws/docs/collector_camera_setup.md)
+
+Recommended order:
+
+1. Validate the camera and ArUco marker with the standalone Python script.
+2. Measure `camera_in_robot_*` and `collector_from_tag_*`.
+3. Enable `enable_collector_tracking:=true` in ROS 2 once the standalone test is stable.
+
+---
+
+## Human Tracking And Presentation
+
+For hand tracking, teleoperation, and the professor demo game:
+
+- Full guide: [docs/human_tracking_and_presentation.md](/C:/Users/Rodrigue/Documents/ai/electrospin_ws/docs/human_tracking_and_presentation.md)
+
+This guide covers:
+
+1. `human_tracking` only
+2. `human_tracking + motion_mapping` teleoperation
+3. `enable_presentation_game:=true` with joint 6 head-like motion
+
+---
+
 ## System Architecture
 
 ```

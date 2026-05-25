@@ -48,7 +48,7 @@ from PyQt5.QtWidgets import (
     QTabWidget, QSlider, QComboBox, QCheckBox, QSplitter, QStatusBar,
     QSizePolicy, QScrollArea, QDial, QLCDNumber
 )
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QSize
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QSize, QObject
 from PyQt5.QtGui import (
     QFont, QColor, QPalette, QPainter, QPen, QBrush,
     QLinearGradient, QRadialGradient, QConicalGradient, QImage, QPixmap
@@ -554,7 +554,7 @@ class EStopButton(QPushButton):
 # Dashboard ROS2 Node
 # ─────────────────────────────────────────────────────────────────────────────
 
-class DashboardNode(Node):
+class DashboardNode(QObject, Node):
     """ROS2 node that bridges the Qt UI with ROS2 topics."""
 
     quality_updated = pyqtSignal(dict)
@@ -573,7 +573,8 @@ class DashboardNode(Node):
     twin_camera_updated = pyqtSignal(object)
 
     def __init__(self):
-        super().__init__("dashboard")
+        QObject.__init__(self)
+        Node.__init__(self, "dashboard")
 
         self.declare_parameter("simulation_mode", True)
         self.declare_parameter("window_title", "ElectroSpin Control Platform")

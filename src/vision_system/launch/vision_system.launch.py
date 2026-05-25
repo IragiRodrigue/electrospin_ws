@@ -13,6 +13,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         DeclareLaunchArgument('simulation_mode', default_value='true'),
+        DeclareLaunchArgument('camera_index', default_value='0'),
         DeclareLaunchArgument('debug_visualization', default_value='true'),
 
         Node(
@@ -23,6 +24,7 @@ def generate_launch_description():
             parameters=[
                 os.path.join(pkg_share, 'config', 'vision_system.yaml'),
                 {'simulation_mode': LaunchConfiguration('simulation_mode')},
+                {'camera_index': LaunchConfiguration('camera_index')},
                 {'debug_visualization': LaunchConfiguration('debug_visualization')},
             ],
             output='screen',
