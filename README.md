@@ -54,6 +54,35 @@ Recommended order:
 
 ---
 
+## Python-Only Demos First
+
+If you want to ignore ROS 2 completely at first, use:
+
+- [docs/python_only_demos.md](/C:/Users/Rodrigue/Documents/ai/electrospin_ws/docs/python_only_demos.md)
+
+Included scripts:
+
+- [collector_camera_demo.py](/C:/Users/Rodrigue/Documents/ai/electrospin_ws/tools/collector_camera_demo.py)
+- [markerless_collector_tracker.py](/C:/Users/Rodrigue/Documents/ai/electrospin_ws/tools/markerless_collector_tracker.py)
+- [human_tracking_demo.py](/C:/Users/Rodrigue/Documents/ai/electrospin_ws/tools/human_tracking_demo.py)
+- [presentation_game_demo.py](/C:/Users/Rodrigue/Documents/ai/electrospin_ws/tools/presentation_game_demo.py)
+- [eye_in_hand_collector_servo.py](/C:/Users/Rodrigue/Documents/ai/electrospin_ws/tools/eye_in_hand_collector_servo.py)
+
+Recommended order:
+
+1. test collector camera
+2. test human tracking
+3. test the presentation game in dry-run
+4. only then enable direct robot control in Python
+
+For the camera-on-joint-6 setup specifically:
+
+- [docs/eye_in_hand_collector_servo.md](/C:/Users/Rodrigue/Documents/ai/electrospin_ws/docs/eye_in_hand_collector_servo.md)
+- [docs/markerless_collector_tracking.md](/C:/Users/Rodrigue/Documents/ai/electrospin_ws/docs/markerless_collector_tracking.md)
+- [eye_in_hand_calibrator.py](/C:/Users/Rodrigue/Documents/ai/electrospin_ws/tools/eye_in_hand_calibrator.py)
+
+---
+
 ## Human Tracking And Presentation
 
 For hand tracking, teleoperation, and the professor demo game:
