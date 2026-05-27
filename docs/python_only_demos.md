@@ -7,6 +7,8 @@ It covers:
 1. collector recognition with the process camera
 2. human tracking with MediaPipe
 3. the presentation game with optional direct robot control through `pymycobot`
+4. body teleoperation of the MyCobot 280 with safety limits
+5. markerless collector pose optimization around a spherical target
 
 ## Install Python Dependencies
 
@@ -124,6 +126,69 @@ What it does:
 - maps left/right motion to `joint 6`
 - optionally sends `send_angles(...)` to the MyCobot
 
+## 4. Body Teleoperation Demo
+
+Files:
+
+- [body_teleop_demo.py](/C:/Users/Rodrigue/Documents/ai/electrospin_ws/tools/body_teleop_demo.py)
+- [body_teleop_demo.md](/C:/Users/Rodrigue/Documents/ai/electrospin_ws/docs/body_teleop_demo.md)
+
+### Safe dry-run first
+
+```bash
+python3 tools/body_teleop_demo.py \
+  --camera-index 0
+```
+
+What it does:
+
+- maps torso motion to robot joint motion
+- uses wrist motion to drive wrist joints
+- freezes when your body stays still
+- freezes when an open palm is detected
+- switches to a compact robot pose when a fist is detected
+
+### Real robot mode
+
+```bash
+python3 tools/body_teleop_demo.py \
+  --camera-index 0 \
+  --control-robot \
+  --serial-port /dev/ttyTHS1 \
+  --baud-rate 1000000
+```
+
+## 5. Markerless Collector Pose Optimizer
+
+Files:
+
+- [markerless_collector_pose_optimizer.py](/C:/Users/Rodrigue/Documents/ai/electrospin_ws/tools/markerless_collector_pose_optimizer.py)
+- [markerless_collector_pose_optimizer.md](/C:/Users/Rodrigue/Documents/ai/electrospin_ws/docs/markerless_collector_pose_optimizer.md)
+
+This version does more than visual following:
+
+- estimates the sphere center in 3D
+- keeps a configured gap to the collector
+- searches several candidate poses around the sphere
+- chooses a better pose before sending the robot
+
+Dry run:
+
+```bash
+python3 tools/markerless_collector_pose_optimizer.py \
+  --config tools/markerless_collector_pose_optimizer_config.example.json
+```
+
+Real robot:
+
+```bash
+python3 tools/markerless_collector_pose_optimizer.py \
+  --config tools/markerless_collector_pose_optimizer_config.example.json \
+  --control-robot \
+  --serial-port /dev/ttyTHS1 \
+  --baud-rate 1000000
+```
+
 ## Suggested Test Order
 
 ### Step 1
@@ -163,6 +228,47 @@ python3 tools/presentation_game_demo.py \
   --baud-rate 1000000
 ```
 
+### Step 5
+
+Test body teleoperation without the robot:
+
+```bash
+python3 tools/body_teleop_demo.py --camera-index 0
+```
+
+### Step 6
+
+Test body teleoperation with the robot:
+
+```bash
+python3 tools/body_teleop_demo.py \
+  --camera-index 0 \
+  --control-robot \
+  --serial-port /dev/ttyTHS1 \
+  --baud-rate 1000000
+```
+
+### Step 7
+
+Test optimized markerless collector approach without the robot:
+
+```bash
+python3 tools/markerless_collector_pose_optimizer.py \
+  --config tools/markerless_collector_pose_optimizer_config.example.json
+```
+
+### Step 8
+
+Test optimized markerless collector approach with the robot:
+
+```bash
+python3 tools/markerless_collector_pose_optimizer.py \
+  --config tools/markerless_collector_pose_optimizer_config.example.json \
+  --control-robot \
+  --serial-port /dev/ttyTHS1 \
+  --baud-rate 1000000
+```
+
 ## Notes
 
 ### Camera sharing
@@ -174,6 +280,8 @@ Do not launch:
 - collector camera demo
 - human tracking demo
 - presentation game demo
+- body teleoperation demo
+- markerless collector pose optimizer
 
 on the same `/dev/video0` at the same time.
 
@@ -185,6 +293,14 @@ For the presentation game:
 - keep the amplitude small
 - stand in a clear area
 - test dry-run before direct robot control
+
+For body teleoperation:
+
+- press `b` to capture your neutral pose before judging the mapping
+- test the dry-run before direct robot control
+- keep the syringe removed
+- keep open palm available as a freeze gesture
+- start with low robot speed
 
 ### If `cv2.aruco` is missing
 

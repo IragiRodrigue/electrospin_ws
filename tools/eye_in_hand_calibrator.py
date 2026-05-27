@@ -14,7 +14,6 @@ but focuses on calibration rather than movement.
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 import time
 from pathlib import Path
@@ -63,6 +62,12 @@ def overlay_lines(frame, lines):
         y += 24
 
 
+def normalize_key(key: int) -> int:
+    if ord("A") <= key <= ord("Z"):
+        return key + 32
+    return key
+
+
 def main():
     parser = argparse.ArgumentParser(description="Interactive eye-in-hand calibration helper")
     parser.add_argument("--config", default="tools/eye_in_hand_collector_servo_config.example.json")
@@ -71,6 +76,7 @@ def main():
     parser.add_argument("--serial-port", default=None)
     parser.add_argument("--baud-rate", type=int, default=None)
     parser.add_argument("--save-on-exit", action="store_true")
+    parser.add_argument("--autosave", action="store_true", help="Save config automatically after each offset change")
     args = parser.parse_args()
 
     config_path = Path(args.config)
@@ -107,11 +113,13 @@ def main():
     edit_mode = "collector"
     step = 0.005
     last_payload = None
+    status_message = "ready"
 
     print("Interactive eye-in-hand calibration started.")
     print("Modes: c=collector offset, n=needle target offset, t=tool-camera offset")
     print("Axes: a/d=x-,x+  w/s=y+,y-  r/f=z+,z-  [ and ] step-/step+")
-    print("p=save now, q=quit")
+    print("p=save now, Ctrl+S=save now, q=quit")
+    print(f"Config file: {config_path.resolve()}")
 
     try:
         while True:
@@ -126,9 +134,11 @@ def main():
 
             lines = [
                 (f"mode={edit_mode} step={step:.4f} m", (255, 220, 0)),
+                (f"config={config_path.name}", (255, 255, 255)),
                 (f"tool_from_camera={cfg['tool_from_camera_position_m']}", (200, 255, 200)),
                 (f"collector_from_tag={cfg['collector_from_tag_position_m']}", (200, 255, 200)),
                 (f"needle_target_from_collector={cfg['needle_target_from_collector_position_m']}", (200, 255, 200)),
+                (f"status={status_message}", (200, 220, 255)),
             ]
 
             if ids is not None and len(ids) > 0:
@@ -191,7 +201,8 @@ def main():
 
             overlay_lines(debug_frame, lines)
             cv2.imshow("eye_in_hand_calibrator", debug_frame)
-            key = cv2.waitKey(1) & 0xFF
+            raw_key = cv2.waitKey(1) & 0xFF
+            key = normalize_key(raw_key)
 
             if key == ord("q"):
                 break
@@ -205,8 +216,9 @@ def main():
                 step = max(0.001, step * 0.5)
             elif key == ord("]"):
                 step = min(0.05, step * 2.0)
-            elif key == ord("p"):
+            elif key in (ord("p"), 19):
                 save_json(config_path, cfg)
+                status_message = f"saved to {config_path.name}"
                 print(f"Saved config to {config_path}")
             elif key in (ord("a"), ord("d"), ord("w"), ord("s"), ord("r"), ord("f")):
                 if edit_mode == "collector":
@@ -228,6 +240,11 @@ def main():
                     vector[2] += step
                 elif key == ord("f"):
                     vector[2] -= step
+                status_message = f"updated {edit_mode} offset"
+                if args.autosave:
+                    save_json(config_path, cfg)
+                    status_message = f"autosaved {config_path.name}"
+                    print(f"Saved config to {config_path}")
             elif key == ord("h"):
                 print("Modes: c=collector, n=needle, t=tool | axes: a/d x, w/s y, r/f z | p=save")
     finally:
