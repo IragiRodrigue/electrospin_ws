@@ -9,6 +9,7 @@ It covers:
 3. the presentation game with optional direct robot control through `pymycobot`
 4. body teleoperation of the MyCobot 280 with safety limits
 5. markerless collector pose optimization around a spherical target
+6. eye-in-hand hand-eye calibration for the camera mount
 
 ## Install Python Dependencies
 
@@ -189,6 +190,28 @@ python3 tools/markerless_collector_pose_optimizer.py \
   --baud-rate 1000000
 ```
 
+## 6. Eye-in-Hand Hand-Eye Calibration
+
+Files:
+
+- [eye_in_hand_handeye_calibration.py](/C:/Users/Rodrigue/Documents/ai/electrospin_ws/tools/eye_in_hand_handeye_calibration.py)
+- [eye_in_hand_handeye_calibration.md](/C:/Users/Rodrigue/Documents/ai/electrospin_ws/docs/eye_in_hand_handeye_calibration.md)
+
+Run:
+
+```bash
+python3 tools/eye_in_hand_handeye_calibration.py \
+  --config tools/eye_in_hand_collector_servo_config.json \
+  --samples-json tools/handeye_samples.json
+```
+
+This is the script that estimates:
+
+- `tool_from_camera_position_m`
+- `tool_from_camera_rpy_rad`
+
+from multiple robot poses and marker observations.
+
 ## Suggested Test Order
 
 ### Step 1
@@ -267,6 +290,16 @@ python3 tools/markerless_collector_pose_optimizer.py \
   --control-robot \
   --serial-port /dev/ttyTHS1 \
   --baud-rate 1000000
+```
+
+### Step 9
+
+Calibrate the fixed camera mounting transform:
+
+```bash
+python3 tools/eye_in_hand_handeye_calibration.py \
+  --config tools/eye_in_hand_collector_servo_config.json \
+  --samples-json tools/handeye_samples.json
 ```
 
 ## Notes
