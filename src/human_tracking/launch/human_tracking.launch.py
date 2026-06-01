@@ -4,12 +4,12 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
-from launch_ros.substitutions import FindPackageShare
+from ament_index_python.packages import get_package_share_directory
 import os
 
 
 def generate_launch_description():
-    pkg_share = FindPackageShare('human_tracking').find('human_tracking')
+    pkg_share = get_package_share_directory('human_tracking')
 
     return LaunchDescription([
         DeclareLaunchArgument('simulation_mode', default_value='true'),

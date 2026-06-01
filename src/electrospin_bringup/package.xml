@@ -11,6 +11,8 @@
   <depend>std_msgs</depend>
   <depend>electrospin_interfaces</depend>
 
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
   <exec_depend>robot_controller</exec_depend>
   <exec_depend>collector_controller</exec_depend>
   <exec_depend>syringe_controller</exec_depend>

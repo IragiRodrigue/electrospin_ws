@@ -147,7 +147,12 @@ class MotorDriverHAL:
         """Read current RPM from encoder / estimator."""
         if self.sim:
             with self._sim_lock:
-                noise = np.random.normal(0, self._noise_std)
+                # Only add noise when motor is spinning (>5 RPM)
+                if self._sim_rpm < 5.0:
+                    return 0.0
+                # Noise proportional to RPM (1% at high RPM)
+                noise_std = self._sim_rpm * 0.01
+                noise = np.random.normal(0, noise_std)
                 return max(0.0, self._sim_rpm + noise)
         else:
             # TODO: Read encoder pulses, convert to RPM
@@ -200,6 +205,10 @@ class VibrationMonitor:
         if len(self._history) < 5:
             return 0.0
         arr = np.array(self._history)
+        mean_rpm = float(arr.mean())
+        # No vibration score when motor is stopped or very slow
+        if mean_rpm < 10.0:
+            return 0.0
         std = float(arr.std())
         # Normalize: 0 RPM std = 0.0 score, 50+ RPM std = 1.0 score
         score = float(np.clip(std / 50.0, 0.0, 1.0))

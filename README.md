@@ -1,6 +1,99 @@
 # ElectroSpin Autonomous Nanofiber Fabrication Platform
 
+Commande de démo recommandée :
+colcon build --packages-select ai_controller electrospin_bringup
+source install/setup.bash
+ros2 launch electrospin_bringup electrospin_bringup.launch.py \
+  simulation_mode:=false \
+  collector_mode:=passive_fixed \
+  process_capabilities:=robot_plus_vision
+
+ros2 launch electrospin_bringup electrospin_bringup.launch.py \
+  simulation_mode:=false \
+  collector_mode:=passive_fixed \
+  process_capabilities:=robot_only \
+  optimization_mode:=off \
+  enable_presentation_game:=true \
+  presentation_tracked_hand:=right
+Si l’image caméra est miroir et que droite/gauche paraît inversé :
+
+ros2 launch electrospin_bringup electrospin_bringup.launch.py \
+  simulation_mode:=false \
+  collector_mode:=passive_fixed \
+  process_capabilities:=robot_only \
+  optimization_mode:=off \
+  enable_presentation_game:=true \
+  presentation_tracked_hand:=right \
+  presentation_invert_direction:=true
+
+ros2 launch electrospin_bringup electrospin_bringup.launch.py \
+  simulation_mode:=false \
+  collector_mode:=passive_fixed \
+  process_capabilities:=robot_only \
+  optimization_mode:=off \
+  enable_presentation_game:=true \
+  presentation_tracked_hand:=right
+
 ROS2-based autonomous electrospinning system for MyCobot 280 robotic arm with AI-assisted nanofiber deposition optimization and real-time teleoperation.
+
+---
+
+## Collector Camera Workflow
+
+For camera-based collector recognition:
+
+- Standalone Python test first: [tools/collector_camera_demo.py](/C:/Users/Rodrigue/Documents/ai/electrospin_ws/tools/collector_camera_demo.py)
+- Example config: [tools/collector_camera_demo_config.example.json](/C:/Users/Rodrigue/Documents/ai/electrospin_ws/tools/collector_camera_demo_config.example.json)
+- Full setup guide: [docs/collector_camera_setup.md](/C:/Users/Rodrigue/Documents/ai/electrospin_ws/docs/collector_camera_setup.md)
+
+Recommended order:
+
+1. Validate the camera and ArUco marker with the standalone Python script.
+2. Measure `camera_in_robot_*` and `collector_from_tag_*`.
+3. Enable `enable_collector_tracking:=true` in ROS 2 once the standalone test is stable.
+
+---
+
+## Python-Only Demos First
+
+If you want to ignore ROS 2 completely at first, use:
+
+- [docs/python_only_demos.md](/C:/Users/Rodrigue/Documents/ai/electrospin_ws/docs/python_only_demos.md)
+
+Included scripts:
+
+- [collector_camera_demo.py](/C:/Users/Rodrigue/Documents/ai/electrospin_ws/tools/collector_camera_demo.py)
+- [markerless_collector_tracker.py](/C:/Users/Rodrigue/Documents/ai/electrospin_ws/tools/markerless_collector_tracker.py)
+- [human_tracking_demo.py](/C:/Users/Rodrigue/Documents/ai/electrospin_ws/tools/human_tracking_demo.py)
+- [presentation_game_demo.py](/C:/Users/Rodrigue/Documents/ai/electrospin_ws/tools/presentation_game_demo.py)
+- [eye_in_hand_collector_servo.py](/C:/Users/Rodrigue/Documents/ai/electrospin_ws/tools/eye_in_hand_collector_servo.py)
+
+Recommended order:
+
+1. test collector camera
+2. test human tracking
+3. test the presentation game in dry-run
+4. only then enable direct robot control in Python
+
+For the camera-on-joint-6 setup specifically:
+
+- [docs/eye_in_hand_collector_servo.md](/C:/Users/Rodrigue/Documents/ai/electrospin_ws/docs/eye_in_hand_collector_servo.md)
+- [docs/markerless_collector_tracking.md](/C:/Users/Rodrigue/Documents/ai/electrospin_ws/docs/markerless_collector_tracking.md)
+- [eye_in_hand_calibrator.py](/C:/Users/Rodrigue/Documents/ai/electrospin_ws/tools/eye_in_hand_calibrator.py)
+
+---
+
+## Human Tracking And Presentation
+
+For hand tracking, teleoperation, and the professor demo game:
+
+- Full guide: [docs/human_tracking_and_presentation.md](/C:/Users/Rodrigue/Documents/ai/electrospin_ws/docs/human_tracking_and_presentation.md)
+
+This guide covers:
+
+1. `human_tracking` only
+2. `human_tracking + motion_mapping` teleoperation
+3. `enable_presentation_game:=true` with joint 6 head-like motion
 
 ---
 
@@ -64,10 +157,20 @@ ROS2-based autonomous electrospinning system for MyCobot 280 robotic arm with AI
 - ROS2 Humble (or Foxy)
 - Python 3.8+
 
-### Install ROS2
+### ROS 2 Galactic Notes
+- Supported target for Galactic: Ubuntu 20.04 + Python 3.8
+- Install ROS packages with `ros-galactic-*` names instead of `ros-humble-*`
+- `mediapipe` is optional and should be installed with `pip`, not `apt`
+- `cv_bridge` should come from ROS packages, not `python3-cv-bridge`
+
+### Install ROS2 Galactic
 ```bash
-# Follow official ROS2 Humble installation:
-# https://docs.ros.org/en/humble/Installation.html
+sudo apt install ros-galactic-desktop
+source /opt/ros/galactic/setup.bash
+```
+
+### Install ROS2 Humble (optional)
+```bash
 sudo apt install ros-humble-desktop
 source /opt/ros/humble/setup.bash
 ```
@@ -81,7 +184,18 @@ pip3 install pymycobot
 pip3 install torch ultralytics
 ```
 
-### Install ROS2 Dependencies
+### Install ROS2 Dependencies (Galactic)
+```bash
+sudo apt install \
+  ros-galactic-gazebo-ros-pkgs \
+  ros-galactic-robot-state-publisher \
+  ros-galactic-joint-state-publisher-gui \
+  ros-galactic-rviz2 \
+  ros-galactic-cv-bridge \
+  python3-colcon-common-extensions
+```
+
+### Install ROS2 Dependencies (Humble, optional)
 ```bash
 sudo apt install \
   ros-humble-gazebo-ros-pkgs \
@@ -91,6 +205,11 @@ sudo apt install \
   ros-humble-cv-bridge \
   ros-humble-moveit \
   python3-colcon-common-extensions
+```
+
+### Galactic Teleoperation Extras
+```bash
+pip3 install mediapipe==0.10.0
 ```
 
 ---

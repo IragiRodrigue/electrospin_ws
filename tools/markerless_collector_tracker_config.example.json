@@ -1,0 +1,21 @@
+{
+  "camera_index": 0,
+  "frame_width": 1280,
+  "frame_height": 720,
+  "fps": 30,
+  "camera_hfov_deg": 69.0,
+  "camera_fx": 0.0,
+  "camera_fy": 0.0,
+  "camera_cx": 0.0,
+  "camera_cy": 0.0,
+  "sphere_diameter_m": 0.07,
+  "hough_dp": 1.2,
+  "hough_min_dist_px": 120.0,
+  "hough_param1": 120.0,
+  "hough_param2": 28.0,
+  "hough_min_radius_px": 40,
+  "hough_max_radius_px": 320,
+  "brightness_threshold": 160,
+  "contour_min_area_px": 3000.0,
+  "contour_min_radius_px": 25.0
+}

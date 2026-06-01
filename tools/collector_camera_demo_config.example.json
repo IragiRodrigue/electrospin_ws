@@ -1,0 +1,20 @@
+{
+  "camera_index": 0,
+  "frame_width": 1280,
+  "frame_height": 720,
+  "fps": 30,
+  "marker_dictionary": "DICT_4X4_50",
+  "marker_id": 0,
+  "marker_length_m": 0.03,
+  "min_marker_area_px": 400.0,
+  "camera_hfov_deg": 69.0,
+  "camera_fx": 0.0,
+  "camera_fy": 0.0,
+  "camera_cx": 0.0,
+  "camera_cy": 0.0,
+  "camera_distortion": [0.0, 0.0, 0.0, 0.0, 0.0],
+  "camera_in_robot_position_m": [0.18, 0.02, 0.24],
+  "camera_in_robot_rpy_rad": [0.0, -0.35, 0.0],
+  "collector_from_tag_position_m": [0.0, 0.05, 0.0],
+  "collector_from_tag_rpy_rad": [0.0, 0.0, 0.0]
+}

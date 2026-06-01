@@ -19,7 +19,22 @@ Real-time displays:
 Author: ElectroSpin Platform
 """
 
+# Fix Qt plugin conflict BEFORE importing anything from PyQt5
 import sys
+import os
+
+# Remove OpenCV's Qt plugin path completely
+sys.path = [p for p in sys.path if 'cv2' not in p or 'qt' not in p.lower()]
+if 'QT_QPA_PLATFORM_PLUGIN_PATH' in os.environ:
+    old_path = os.environ['QT_QPA_PLATFORM_PLUGIN_PATH']
+    os.environ['QT_QPA_PLATFORM_PLUGIN_PATH'] = ':'.join(
+        p for p in old_path.split(':') if 'cv2' not in p
+    )
+
+# Headless fallback
+if not os.environ.get('DISPLAY') and not os.environ.get('WAYLAND_DISPLAY'):
+    os.environ['QT_QPA_PLATFORM'] = 'offscreen'
+
 import json
 import math
 import time
@@ -33,7 +48,7 @@ from PyQt5.QtWidgets import (
     QTabWidget, QSlider, QComboBox, QCheckBox, QSplitter, QStatusBar,
     QSizePolicy, QScrollArea, QDial, QLCDNumber
 )
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QSize
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QSize, QObject
 from PyQt5.QtGui import (
     QFont, QColor, QPalette, QPainter, QPen, QBrush,
     QLinearGradient, QRadialGradient, QConicalGradient, QImage, QPixmap
@@ -539,7 +554,7 @@ class EStopButton(QPushButton):
 # Dashboard ROS2 Node
 # ─────────────────────────────────────────────────────────────────────────────
 
-class DashboardNode(Node):
+class DashboardNode(QObject, Node):
     """ROS2 node that bridges the Qt UI with ROS2 topics."""
 
     quality_updated = pyqtSignal(dict)
@@ -558,7 +573,8 @@ class DashboardNode(Node):
     twin_camera_updated = pyqtSignal(object)
 
     def __init__(self):
-        super().__init__("dashboard")
+        QObject.__init__(self)
+        Node.__init__(self, "dashboard")
 
         self.declare_parameter("simulation_mode", True)
         self.declare_parameter("window_title", "ElectroSpin Control Platform")
