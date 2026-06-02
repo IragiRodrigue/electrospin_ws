@@ -510,7 +510,8 @@ class TargetConfApp:
         status = "collector not detected"
 
         if candidate is not None:
-            payload = estimate_depth_and_offset(candidate.x, candidate.y, candidate.radius, frame.shape[1], frame.shape[0], cfg)
+            sphere_x, sphere_y, sphere_radius = candidate
+            payload = estimate_depth_and_offset(sphere_x, sphere_y, sphere_radius, frame.shape[1], frame.shape[0], cfg)
             sphere_camera_xyz = np.array(payload["camera_xyz_m"], dtype=float)
             optimize_result = self.optimize_pose(current_coords, sphere_camera_xyz, cfg)
             best_coords = optimize_result["best_coords"]
@@ -518,8 +519,8 @@ class TargetConfApp:
             current_gap_mm = optimize_result["current_gap_m"] * 1000.0
             target_gap_mm = float(cfg["target_distance_mm"])
 
-            cv2.circle(frame, (int(candidate.x), int(candidate.y)), int(candidate.radius), (0, 255, 0), 2)
-            cv2.circle(frame, (int(candidate.x), int(candidate.y)), 4, (0, 0, 255), -1)
+            cv2.circle(frame, (int(sphere_x), int(sphere_y)), int(sphere_radius), (0, 255, 0), 2)
+            cv2.circle(frame, (int(sphere_x), int(sphere_y)), 4, (0, 0, 255), -1)
 
             collector_center_mm = collector_center_base * 1000.0
             self.center_text.set(f"{collector_center_mm[0]:.1f}, {collector_center_mm[1]:.1f}, {collector_center_mm[2]:.1f} mm")
@@ -532,8 +533,8 @@ class TargetConfApp:
                 target_pose_error_mm = float(np.linalg.norm(current_tool_pos_mm - target_tool_pos_mm))
                 arc_waypoints = self.build_arc_waypoints(optimize_result, cfg)
                 self.last_payload = {
-                    "sphere_center_px": [round(candidate.x, 3), round(candidate.y, 3)],
-                    "sphere_radius_px": round(candidate.radius, 3),
+                    "sphere_center_px": [round(float(sphere_x), 3), round(float(sphere_y), 3)],
+                    "sphere_radius_px": round(float(sphere_radius), 3),
                     "sphere_camera_xyz_m": [round(float(v), 6) for v in sphere_camera_xyz],
                     "collector_center_base_mm": [round(float(v), 3) for v in collector_center_mm],
                     "current_gap_mm": round(current_gap_mm, 3),
