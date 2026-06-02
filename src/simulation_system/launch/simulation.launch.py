@@ -163,6 +163,7 @@ def generate_launch_description():
             default_value="auto",
             description="Robot spawn X position in world coordinates, or auto",
         ),
+<<<<<<< HEAD
         DeclareLaunchArgument(
             "spawn_y",
             default_value="auto",
@@ -174,6 +175,48 @@ def generate_launch_description():
             description="Robot spawn Z position in world coordinates, or auto",
         ),
         DeclareLaunchArgument(
+=======
+<<<<<<< HEAD
+
+        # Gazebo server
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource([
+                os.path.join(
+                    get_package_share_directory('gazebo_ros'),
+                    'launch', 'gzserver.launch.py'
+                )
+            ]),
+            launch_arguments={
+                'world': world_file,
+                'verbose': 'true',
+            }.items(),
+        ),
+
+        # Gazebo client
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource([
+                os.path.join(
+                    get_package_share_directory('gazebo_ros'),
+                    'launch', 'gzclient.launch.py'
+                )
+            ]),
+            launch_arguments={
+                'world': world_file,
+            }.items(),
+=======
+        DeclareLaunchArgument(
+            "spawn_y",
+            default_value="auto",
+            description="Robot spawn Y position in world coordinates, or auto",
+        ),
+        DeclareLaunchArgument(
+            "spawn_z",
+            default_value="auto",
+            description="Robot spawn Z position in world coordinates, or auto",
+>>>>>>> de8662bf88bab41070a610aa43899413f3085075
+        ),
+        DeclareLaunchArgument(
+>>>>>>> 8a8e6671a39a799242d9e4198a8d5b3ef366925c
             "spawn_yaw",
             default_value="auto",
             description="Robot spawn yaw in radians, or auto",

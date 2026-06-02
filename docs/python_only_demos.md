@@ -9,7 +9,10 @@ It covers:
 3. the presentation game with optional direct robot control through `pymycobot`
 4. body teleoperation of the MyCobot 280 with safety limits
 5. markerless collector pose optimization around a spherical target
+<<<<<<< HEAD
 6. eye-in-hand hand-eye calibration for the camera mount
+=======
+>>>>>>> 8a8e6671a39a799242d9e4198a8d5b3ef366925c
 
 ## Install Python Dependencies
 
@@ -190,6 +193,7 @@ python3 tools/markerless_collector_pose_optimizer.py \
   --baud-rate 1000000
 ```
 
+<<<<<<< HEAD
 ## 6. Eye-in-Hand Hand-Eye Calibration
 
 Files:
@@ -212,6 +216,8 @@ This is the script that estimates:
 
 from multiple robot poses and marker observations.
 
+=======
+>>>>>>> 8a8e6671a39a799242d9e4198a8d5b3ef366925c
 ## Suggested Test Order
 
 ### Step 1
@@ -292,6 +298,7 @@ python3 tools/markerless_collector_pose_optimizer.py \
   --baud-rate 1000000
 ```
 
+<<<<<<< HEAD
 ### Step 9
 
 Calibrate the fixed camera mounting transform:
@@ -302,6 +309,8 @@ python3 tools/eye_in_hand_handeye_calibration.py \
   --samples-json tools/handeye_samples.json
 ```
 
+=======
+>>>>>>> 8a8e6671a39a799242d9e4198a8d5b3ef366925c
 ## Notes
 
 ### Camera sharing
