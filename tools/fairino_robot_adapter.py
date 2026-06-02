@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Best-effort Fairino robot adapter for Cartesian pose control."""
+"""Fairino robot adapter aligned with the official Python RPC API."""
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Optional, Sequence, Tuple
+from typing import Any, Optional, Sequence, Tuple
 
 
 def _extract_pose(value: Any) -> Optional[Tuple[float, float, float, float, float, float]]:
@@ -20,7 +20,7 @@ def _extract_pose(value: Any) -> Optional[Tuple[float, float, float, float, floa
 
 
 class FairinoRobotAdapter:
-    """Adapter around common Fairino Python SDK layouts."""
+    """Adapter around the official Fairino Python RPC SDK."""
 
     def __init__(self, robot_ip: str, speed: int = 15, tool_num: int = 0, user_num: int = 0) -> None:
         self.robot_ip = robot_ip
@@ -50,6 +50,14 @@ class FairinoRobotAdapter:
             errors.append(f"fairino module: {exc}")
 
         try:
+            import frrpc  # type: ignore
+
+            if hasattr(frrpc, "RPC"):
+                return frrpc.RPC(robot_ip)
+        except Exception as exc:  # pragma: no cover - environment specific
+            errors.append(f"frrpc module: {exc}")
+
+        try:
             import Robot  # type: ignore
 
             if hasattr(Robot, "RPC"):
@@ -58,24 +66,34 @@ class FairinoRobotAdapter:
             errors.append(f"Robot module: {exc}")
 
         raise RuntimeError(
-            "Unable to import/connect Fairino SDK. Tried fairino.Robot.RPC(...) and Robot.RPC(...). "
+            "Unable to import/connect Fairino SDK. Tried fairino.Robot.RPC(...), frrpc.RPC(...), and Robot.RPC(...). "
             f"Details: {' | '.join(errors) if errors else 'no SDK found'}"
         )
 
+    @staticmethod
+    def _split_ret(result: Any) -> Tuple[int, Any]:
+        if isinstance(result, (list, tuple)) and len(result) >= 1:
+            err = int(result[0])
+            if len(result) == 1:
+                return err, None
+            if len(result) == 2:
+                return err, result[1]
+            return err, list(result[1:])
+        if isinstance(result, (int, float)):
+            return int(result), None
+        return -1, result
+
     def get_coords(self) -> Optional[Tuple[float, float, float, float, float, float]]:
-        method_names = [
-            "GetActualTCPPose",
-            "GetActualToolFlangePose",
-            "GetActualTCPNumPose",
-            "GetCurrentTCPPose",
-            "GetPose",
-        ]
+        method_names = ["GetActualTCPPose", "GetActualToolFlangePose"]
         for name in method_names:
             method = getattr(self.robot, name, None)
             if callable(method):
                 try:
                     result = method()
-                    pose = _extract_pose(result)
+                    err, data = self._split_ret(result)
+                    if err != 0:
+                        continue
+                    pose = _extract_pose(data)
                     if pose is not None:
                         return pose
                 except Exception:
@@ -85,13 +103,40 @@ class FairinoRobotAdapter:
     def send_coords(self, coords: Sequence[float], speed: Optional[int] = None) -> None:
         pose = [float(v) for v in coords]
         vel = int(self.speed if speed is None else speed)
+        tool_num = self.tool_num
+        user_num = self.user_num
+
+        get_tool_num = getattr(self.robot, "GetActualTCPNum", None)
+        if callable(get_tool_num):
+            try:
+                err, data = self._split_ret(get_tool_num())
+                if err == 0 and isinstance(data, (int, float)):
+                    tool_num = int(data)
+            except Exception:
+                pass
+
+        get_user_num = getattr(self.robot, "GetActualWObjNum", None)
+        if callable(get_user_num):
+            try:
+                err, data = self._split_ret(get_user_num())
+                if err == 0 and isinstance(data, (int, float)):
+                    user_num = int(data)
+            except Exception:
+                pass
+
+        mode = getattr(self.robot, "Mode", None)
+        if callable(mode):
+            try:
+                mode(0)
+            except Exception:
+                pass
+
         attempts = [
-            ("MoveCart", (pose, self.tool_num, self.user_num, vel)),
-            ("MoveCart", (pose, self.tool_num, self.user_num)),
+            ("MoveCart", (pose, tool_num, user_num, vel, 100.0, 100.0, -1.0, -1)),
+            ("MoveCart", (pose, tool_num, user_num, vel, 100.0, 100.0)),
+            ("MoveCart", (pose, tool_num, user_num, vel)),
+            ("MoveCart", (pose, tool_num, user_num)),
             ("MoveCart", (pose,)),
-            ("MoveL", (pose, self.tool_num, self.user_num, vel)),
-            ("MoveL", (pose, self.tool_num, self.user_num)),
-            ("MoveL", (pose,)),
         ]
         errors = []
         for name, args in attempts:
@@ -100,8 +145,9 @@ class FairinoRobotAdapter:
                 continue
             try:
                 result = method(*args)
-                if isinstance(result, (int, float)) and int(result) not in (0,):
-                    errors.append(f"{name}{args} -> code {result}")
+                err, data = self._split_ret(result)
+                if err != 0:
+                    errors.append(f"{name}{args} -> code {err} data {data}")
                     continue
                 return
             except TypeError as exc:
@@ -121,4 +167,3 @@ class FairinoRobotAdapter:
                     method()
                 except Exception:
                     pass
-

@@ -107,74 +107,6 @@ DEFAULT_STATE: Dict = {
 }
 
 
-@dataclass
-class SphereCandidate:
-    x: float
-    y: float
-    radius: float
-    score: float
-
-
-class SphereDetector:
-    """More stable detector for reflective spheres on non-black backgrounds."""
-
-    def __init__(self) -> None:
-        self.last_candidate: Optional[SphereCandidate] = None
-        self.last_seen_time = 0.0
-
-    def detect(self, frame: np.ndarray, cfg: Dict) -> Optional[SphereCandidate]:
-        gray = preprocess(frame)
-        candidates = self._collect_candidates(frame, gray, cfg, offset=(0, 0))
-
-        if self.last_candidate is not None and (time.time() - self.last_seen_time) < 1.0:
-            margin = int(max(60, self.last_candidate.radius * 2.5))
-            x0 = max(0, int(self.last_candidate.x - margin))
-            y0 = max(0, int(self.last_candidate.y - margin))
-            x1 = min(frame.shape[1], int(self.last_candidate.x + margin))
-            y1 = min(frame.shape[0], int(self.last_candidate.y + margin))
-            if x1 > x0 + 20 and y1 > y0 + 20:
-                roi_frame = frame[y0:y1, x0:x1]
-                roi_gray = preprocess(roi_frame)
-                candidates.extend(self._collect_candidates(roi_frame, roi_gray, cfg, offset=(x0, y0), roi_bonus=20.0))
-
-        if not candidates:
-            return None
-
-        chosen = max(candidates, key=lambda c: c.score)
-        self.last_candidate = chosen
-        self.last_seen_time = time.time()
-        return chosen
-
-    def _collect_candidates(
-        self,
-        frame: np.ndarray,
-        gray: np.ndarray,
-        cfg: Dict,
-        offset: Tuple[int, int],
-        roi_bonus: float = 0.0,
-    ) -> List[SphereCandidate]:
-        ox, oy = offset
-        raw: List[Tuple[float, float, float, float]] = []
-        hough = detect_circle_hough(gray, cfg)
-        if hough is not None:
-            raw.append((float(hough[0]) + ox, float(hough[1]) + oy, float(hough[2]), 0.0))
-        contour = detect_circle_contour(frame, cfg)
-        if contour is not None:
-            raw.append((float(contour[0]) + ox, float(contour[1]) + oy, float(contour[2]), 0.0))
-
-        candidates: List[SphereCandidate] = []
-        for x, y, radius, _ in raw:
-            score = radius * 3.0 + roi_bonus
-            if self.last_candidate is not None:
-                dist = math.hypot(x - self.last_candidate.x, y - self.last_candidate.y)
-                score -= dist * 0.08
-                score -= abs(radius - self.last_candidate.radius) * 0.4
-            score -= abs(x - (ox + frame.shape[1] * 0.5)) * 0.01
-            score -= abs(y - (oy + frame.shape[0] * 0.5)) * 0.005
-            candidates.append(SphereCandidate(x=x, y=y, radius=radius, score=score))
-        return candidates
-
-
 def merge_defaults(base: Dict, updates: Dict) -> Dict:
     merged = dict(base)
     merged.update(updates)
@@ -232,7 +164,6 @@ class TargetConfApp:
         self.poses_path = poses_path
         self.control_robot_requested = control_robot
         self.state = self._load_state()
-        self.detector = SphereDetector()
         self.robot: Optional[MyCobot] = None
         self.cap = cv2.VideoCapture(int(self.state["camera_index"]))
         if not self.cap.isOpened():
@@ -568,7 +499,14 @@ class TargetConfApp:
         cfg = self.get_runtime_cfg()
         current_coords = self.get_robot_coords(cfg)
         self.last_robot_coords = current_coords
-        candidate = self.detector.detect(frame, cfg)
+        gray = preprocess(frame)
+        candidate = None
+        hough_candidate = detect_circle_hough(gray, cfg)
+        contour_candidate = detect_circle_contour(frame, cfg)
+        if hough_candidate is not None:
+            candidate = hough_candidate
+        if candidate is None and contour_candidate is not None:
+            candidate = contour_candidate
         status = "collector not detected"
 
         if candidate is not None:
