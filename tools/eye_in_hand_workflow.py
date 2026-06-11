@@ -142,7 +142,14 @@ def save_calibration_into_config(config_path: Path, cfg: Dict, calibrated_transf
 
 
 def launch_target_deterministic() -> None:
-    runpy.run_path(str(DEFAULT_LAUNCHER_PATH), run_name="__main__")
+    previous_argv = sys.argv[:]
+    try:
+        # Launch the deterministic UI with a clean argv so it does not inherit
+        # the workflow subcommand such as `wizard` or `capture-calibration`.
+        sys.argv = [str(DEFAULT_LAUNCHER_PATH)]
+        runpy.run_path(str(DEFAULT_LAUNCHER_PATH), run_name="__main__")
+    finally:
+        sys.argv = previous_argv
 
 
 def run_capture_session(args: argparse.Namespace) -> bool:
@@ -371,6 +378,8 @@ def run_capture_session(args: argparse.Namespace) -> bool:
     finally:
         cap.release()
         cv2.destroyAllWindows()
+        # Give V4L a short moment to release the camera before reopening it.
+        time.sleep(0.5)
 
     if saved_config and (args.launch_after_save or key == ord("l")):
         launch_target_deterministic()
