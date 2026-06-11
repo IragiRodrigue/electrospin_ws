@@ -48,12 +48,70 @@ DETERMINISTIC_DEFAULTS.update(
         "pre_approach_extra_mm": 60.0,
         "execute_interval_s": 1.0,
         "arc_interval_s": 0.7,
+        "sphere_head_only": True,
+        "head_refine_margin_scale": 1.5,
+        "head_refine_top_scale": 1.35,
+        "head_refine_bottom_scale": 0.25,
+        "head_refine_value_threshold": 150,
+        "head_refine_min_area_px": 500.0,
+        "head_refine_min_radius_px": 10.0,
+        "head_refine_max_aspect_ratio": 1.35,
     }
 )
 
 
 def median_vector(samples: List[List[float]]) -> List[float]:
     return [float(v) for v in base_ui.np.median(base_ui.np.array(samples, dtype=float), axis=0)]
+
+
+def refine_sphere_head_candidate(frame, candidate, cfg: Dict):
+    x, y, radius = candidate
+    margin_scale = float(cfg.get("head_refine_margin_scale", 1.5))
+    top_scale = float(cfg.get("head_refine_top_scale", 1.35))
+    bottom_scale = float(cfg.get("head_refine_bottom_scale", 0.25))
+    roi_x0 = max(0, int(x - radius * margin_scale))
+    roi_x1 = min(frame.shape[1], int(x + radius * margin_scale))
+    roi_y0 = max(0, int(y - radius * top_scale))
+    roi_y1 = min(frame.shape[0], int(y + radius * bottom_scale))
+    if roi_x1 - roi_x0 < 20 or roi_y1 - roi_y0 < 20:
+        return candidate
+
+    roi = frame[roi_y0:roi_y1, roi_x0:roi_x1]
+    hsv = base_ui.cv2.cvtColor(roi, base_ui.cv2.COLOR_BGR2HSV)
+    value = hsv[:, :, 2]
+    _, mask = base_ui.cv2.threshold(value, int(cfg.get("head_refine_value_threshold", 150)), 255, base_ui.cv2.THRESH_BINARY)
+    kernel = base_ui.np.ones((5, 5), dtype=base_ui.np.uint8)
+    mask = base_ui.cv2.morphologyEx(mask, base_ui.cv2.MORPH_OPEN, kernel)
+    mask = base_ui.cv2.morphologyEx(mask, base_ui.cv2.MORPH_CLOSE, kernel)
+
+    contours, _ = base_ui.cv2.findContours(mask, base_ui.cv2.RETR_EXTERNAL, base_ui.cv2.CHAIN_APPROX_SIMPLE)
+    best = None
+    best_score = -1.0
+    min_area = float(cfg.get("head_refine_min_area_px", 500.0))
+    min_radius = float(cfg.get("head_refine_min_radius_px", 10.0))
+    max_aspect = float(cfg.get("head_refine_max_aspect_ratio", 1.35))
+
+    for contour in contours:
+        area = base_ui.cv2.contourArea(contour)
+        if area < min_area:
+            continue
+        perimeter = base_ui.cv2.arcLength(contour, True)
+        if perimeter <= 1e-6:
+            continue
+        rx, ry, rw, rh = base_ui.cv2.boundingRect(contour)
+        aspect = max(rw / max(rh, 1.0), rh / max(rw, 1.0))
+        if aspect > max_aspect:
+            continue
+        circularity = 4.0 * math.pi * area / (perimeter * perimeter)
+        (cx, cy), cr = base_ui.cv2.minEnclosingCircle(contour)
+        if cr < min_radius:
+            continue
+        score = circularity * area
+        if score > best_score:
+            best = (float(cx + roi_x0), float(cy + roi_y0), float(cr))
+            best_score = score
+
+    return best if best is not None else candidate
 
 
 class DeterministicTargetConfApp:
@@ -105,6 +163,7 @@ class DeterministicTargetConfApp:
         self.serial_port_var = tk.StringVar(value=str(self.state["serial_port"]))
         self.baud_rate_var = tk.StringVar(value=str(int(self.state["baud_rate"])))
         self.localize_samples_var = tk.StringVar(value=str(int(self.state["localize_sample_count"])))
+        self.sphere_head_only_var = tk.BooleanVar(value=bool(self.state.get("sphere_head_only", True)))
 
         self._build_ui()
         if self.control_robot_requested:
@@ -155,15 +214,22 @@ class DeterministicTargetConfApp:
             ttk.Entry(control, textvariable=variable, width=16).grid(row=row, column=1, sticky="ew", pady=4)
             row += 1
 
+        ttk.Checkbutton(control, text="Sphere head only", variable=self.sphere_head_only_var).grid(row=row, column=0, columnspan=2, sticky="w", pady=(2, 6))
+        row += 1
+
         ttk.Button(control, textvariable=self.connect_text, command=self.toggle_robot).grid(row=row, column=0, columnspan=2, sticky="ew", pady=(8, 4))
         row += 1
         ttk.Button(control, text="1. Localize Collector", command=self.start_localization).grid(row=row, column=0, columnspan=2, sticky="ew", pady=4)
         row += 1
         ttk.Button(control, text="Save Collector Pose", command=self.save_locked_collector).grid(row=row, column=0, columnspan=2, sticky="ew", pady=4)
         row += 1
+        ttk.Button(control, text="Load Collector Pose", command=self.load_locked_collector).grid(row=row, column=0, columnspan=2, sticky="ew", pady=4)
+        row += 1
         ttk.Button(control, text="2. Optimize Target", command=self.optimize_locked_target).grid(row=row, column=0, columnspan=2, sticky="ew", pady=4)
         row += 1
         ttk.Button(control, text="Save Target Pose", command=self.save_optimized_target).grid(row=row, column=0, columnspan=2, sticky="ew", pady=4)
+        row += 1
+        ttk.Button(control, text="Load Target Pose", command=self.load_optimized_target).grid(row=row, column=0, columnspan=2, sticky="ew", pady=4)
         row += 1
         ttk.Button(control, text="3. Execute Approach", command=self.execute_approach).grid(row=row, column=0, columnspan=2, sticky="ew", pady=4)
         row += 1
@@ -218,6 +284,7 @@ class DeterministicTargetConfApp:
         cfg["serial_port"] = self.serial_port_var.get().strip() or str(self.state["serial_port"])
         cfg["baud_rate"] = base_ui.safe_int(self.baud_rate_var.get(), int(self.state["baud_rate"]))
         cfg["localize_sample_count"] = base_ui.safe_int(self.localize_samples_var.get(), int(self.state["localize_sample_count"]))
+        cfg["sphere_head_only"] = bool(self.sphere_head_only_var.get())
         cfg["sphere_diameter_m"] = cfg["collector_diameter_mm"] / 1000.0
         return cfg
 
@@ -237,6 +304,8 @@ class DeterministicTargetConfApp:
             candidate = hough_candidate
         if candidate is None and contour_candidate is not None:
             candidate = contour_candidate
+        if candidate is not None and bool(cfg.get("sphere_head_only", True)):
+            candidate = refine_sphere_head_candidate(frame, candidate, cfg)
         return candidate
 
     def localize_collector_from_candidate(self, current_coords, sphere_xyz_m):
@@ -333,6 +402,9 @@ class DeterministicTargetConfApp:
     def start_localization(self) -> None:
         self.localization_samples = []
         self.last_localize_time = 0.0
+        self.optimized_target = None
+        self.execution_waypoints = []
+        self.execution_index = 0
         self.phase = "localizing"
         self.phase_text.set("localizing")
         self.status_text.set("Collecting localization samples")
@@ -343,6 +415,28 @@ class DeterministicTargetConfApp:
             return
         base_ui.save_json(self.collector_path, self.locked_collector)
         self.status_text.set(f"Collector pose saved to {self.collector_path}")
+
+    def load_locked_collector(self) -> None:
+        if not self.collector_path.exists():
+            self.status_text.set("No saved collector pose file found")
+            return
+        payload = base_ui.load_json(self.collector_path)
+        if "collector_center_base_m" not in payload or "collector_radius_mm" not in payload:
+            self.status_text.set("Collector pose file is invalid")
+            return
+        self.locked_collector = payload
+        self.optimized_target = None
+        self.execution_waypoints = []
+        self.execution_index = 0
+        center_mm = payload.get("collector_center_base_mm")
+        if center_mm is None:
+            center_mm = [float(v) * 1000.0 for v in payload["collector_center_base_m"]]
+            payload["collector_center_base_mm"] = center_mm
+        self.collector_text.set(", ".join(f"{float(v):.1f}" for v in center_mm))
+        self.target_text.set("-")
+        self.phase = "collector_locked"
+        self.phase_text.set("collector_locked")
+        self.status_text.set(f"Collector pose loaded from {self.collector_path}")
 
     def optimize_locked_target(self) -> None:
         cfg = self.get_runtime_cfg()
@@ -378,6 +472,34 @@ class DeterministicTargetConfApp:
             return
         base_ui.save_json(self.target_path, self.optimized_target)
         self.status_text.set(f"Target pose saved to {self.target_path}")
+
+    def load_optimized_target(self) -> None:
+        if not self.target_path.exists():
+            self.status_text.set("No saved target pose file found")
+            return
+        payload = base_ui.load_json(self.target_path)
+        if "target_coords_mm_deg" not in payload or "arc_waypoints" not in payload:
+            self.status_text.set("Target pose file is invalid")
+            return
+        self.optimized_target = payload
+        if self.locked_collector is None and "collector_center_base_m" in payload and "collector_radius_mm" in payload:
+            collector_center_base_m = [float(v) for v in payload["collector_center_base_m"]]
+            self.locked_collector = {
+                "timestamp": payload.get("timestamp", time.time()),
+                "sample_count": 0,
+                "collector_center_base_m": collector_center_base_m,
+                "collector_center_base_mm": [round(v * 1000.0, 3) for v in collector_center_base_m],
+                "collector_radius_mm": float(payload["collector_radius_mm"]),
+                "sphere_radius_px_median": 0.0,
+            }
+        self.execution_waypoints = []
+        self.execution_index = 0
+        self.target_text.set(", ".join(f"{float(v):.1f}" for v in payload["target_coords_mm_deg"]))
+        if self.locked_collector is not None:
+            self.collector_text.set(", ".join(f"{float(v):.1f}" for v in self.locked_collector["collector_center_base_mm"]))
+        self.phase = "target_optimized"
+        self.phase_text.set("target_optimized")
+        self.status_text.set(f"Target pose loaded from {self.target_path}")
 
     def execute_approach(self) -> None:
         cfg = self.get_runtime_cfg()
@@ -435,6 +557,7 @@ class DeterministicTargetConfApp:
                 "baud_rate": cfg["baud_rate"],
                 "robot_speed": cfg["robot_speed"],
                 "localize_sample_count": cfg["localize_sample_count"],
+                "sphere_head_only": cfg["sphere_head_only"],
             }
         )
         base_ui.save_json(self.state_path, self.state)
@@ -477,10 +600,11 @@ class DeterministicTargetConfApp:
 
         candidate = self.detect_candidate(frame, cfg)
         detection_status = "not detected"
+        detection_mode = "head" if bool(cfg.get("sphere_head_only", True)) else "legacy"
 
         if candidate is not None:
             x, y, radius = candidate
-            detection_status = f"center=({x:.1f},{y:.1f}) radius={radius:.1f}px"
+            detection_status = f"{detection_mode} center=({x:.1f},{y:.1f}) radius={radius:.1f}px"
             base_ui.cv2.circle(frame, (int(x), int(y)), int(radius), (0, 255, 0), 2)
             base_ui.cv2.circle(frame, (int(x), int(y)), 4, (0, 0, 255), -1)
             payload = base_ui.estimate_depth_and_offset(x, y, radius, frame.shape[1], frame.shape[0], cfg)
@@ -528,7 +652,7 @@ class DeterministicTargetConfApp:
 
         self.maybe_execute_waypoint(current_coords, cfg)
 
-        base_ui.cv2.putText(frame, f"phase={self.phase}", (12, frame.shape[0] - 18), base_ui.cv2.FONT_HERSHEY_SIMPLEX, 0.62, (0, 255, 0), 2, base_ui.cv2.LINE_AA)
+        base_ui.cv2.putText(frame, f"phase={self.phase} detect={detection_mode}", (12, frame.shape[0] - 18), base_ui.cv2.FONT_HERSHEY_SIMPLEX, 0.62, (0, 255, 0), 2, base_ui.cv2.LINE_AA)
         display = base_ui.cv2.resize(frame, (960, 540))
         rgb = base_ui.cv2.cvtColor(display, base_ui.cv2.COLOR_BGR2RGB)
         ok, buffer = base_ui.cv2.imencode(".png", rgb)
